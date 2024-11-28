@@ -12,16 +12,37 @@ import { Comfortaa, Lexend } from 'next/font/google'
 const comfortaa = Comfortaa({ subsets: ['latin'] })
 const lexend = Lexend({ subsets: ['latin'] })
 
-export function FoodFixrLogin() {
+interface FoodFixrLoginProps {
+  onSubmit?: (email: string, password: string, remember: boolean) => Promise<void>;
+  onForgotPassword?: () => void;
+  onSignUp?: () => void;
+  loading?: boolean;
+}
+
+export function FoodFixrLogin({ 
+  onSubmit,
+  onForgotPassword,
+  onSignUp,
+  loading: externalLoading
+}: FoodFixrLoginProps) {
   const [loading, setLoading] = useState(false)
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [remember, setRemember] = useState(false)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    setLoading(true)
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 1000))
-    setLoading(false)
+    if (onSubmit) {
+      setLoading(true)
+      try {
+        await onSubmit(email, password, remember)
+      } finally {
+        setLoading(false)
+      }
+    }
   }
+
+  const isLoading = externalLoading || loading
 
   return (
     <div className={`min-h-screen bg-white p-4 flex flex-col items-center justify-center ${comfortaa.className}`} role="main">
@@ -54,7 +75,9 @@ export function FoodFixrLogin() {
                 type="email"
                 placeholder="chef@example.com"
                 required
-                className="bg-white border-[#00FFFF] focus:ring-2 focus:ring-[#00FFFF] focus:ring-offset-2"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="bg-white border-gray-300 focus:ring-2 focus:ring-gray-300 focus:ring-offset-2"
                 aria-required="true"
                 aria-invalid="false"
               />
@@ -65,28 +88,50 @@ export function FoodFixrLogin() {
                 id="password"
                 type="password"
                 required
-                className="bg-white border-[#00FFFF] focus:ring-2 focus:ring-[#00FFFF] focus:ring-offset-2"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="bg-white border-gray-300 focus:ring-2 focus:ring-gray-300 focus:ring-offset-2"
                 aria-required="true"
                 aria-invalid="false"
               />
             </div>
             <div className="flex items-center space-x-2">
-              <Checkbox id="remember" aria-label="Remember me checkbox"/>
+              <Checkbox 
+                id="remember" 
+                checked={remember}
+                onCheckedChange={(checked) => setRemember(checked as boolean)}
+                aria-label="Remember me checkbox"
+              />
               <Label htmlFor="remember" className={`text-sm font-normal text-[#666666] ${lexend.className}`}>Remember me</Label>
             </div>
             <Button 
               type="submit" 
-              className={`w-full bg-white text-[#333333] border-[#00FFFF] hover:bg-[#00FFFF]/10 shadow-[0_4px_0_#00FFFF] hover:shadow-[0_2px_0_#00FFFF] active:shadow-none active:translate-y-1 transition-all focus:ring-2 focus:ring-[#00FFFF] focus:ring-offset-2 ${lexend.className}`}
-              disabled={loading}
-              aria-busy={loading}
+              className={`w-full bg-white text-[#333333] border-[#00FFFF] hover:bg-[#00FFFF]/10 shadow-[0_4px_0_#808080] hover:shadow-[0_2px_0_#808080] active:shadow-none active:translate-y-1 transition-all focus:ring-2 focus:ring-[#00FFFF] focus:ring-offset-2 ${lexend.className}`}
+              disabled={isLoading}
+              aria-busy={isLoading}
             >
-              {loading ? 'Logging in...' : 'Log In'}
+              {isLoading ? 'Logging in...' : 'Log In'}
             </Button>
           </form>
         </CardContent>
         <CardFooter className={`flex flex-col space-y-2 text-center text-sm text-[#666666] ${lexend.className}`}>
-          <a href="/forgot-password" className="text-[#00FFFF] hover:underline focus:ring-2 focus:ring-[#00FFFF] focus:ring-offset-2 p-1 rounded" aria-label="Forgot password link">Forgot password?</a>
-          <p>Don't have an account? <a href="/signup" className="text-[#00FFFF] hover:underline focus:ring-2 focus:ring-[#00FFFF] focus:ring-offset-2 p-1 rounded" aria-label="Sign up link">Sign up</a></p>
+          <button 
+            onClick={onForgotPassword}
+            className="text-[#008080] hover:underline focus:ring-2 focus:ring-[#00FFFF] focus:ring-offset-2" 
+            aria-label="Forgot password link"
+          >
+            Forgot password?
+          </button>
+          <p>
+            Don't have an account?{' '}
+            <button
+              onClick={onSignUp}
+              className="text-[#008080] hover:underline focus:ring-2 focus:ring-[#00FFFF] focus:ring-offset-2"
+              aria-label="Sign up link"
+            >
+              Sign up
+            </button>
+          </p>
         </CardFooter>
       </Card>
     </div>

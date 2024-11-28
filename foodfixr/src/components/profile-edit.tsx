@@ -13,6 +13,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import Image from 'next/image'
 import { Comfortaa, Lexend } from 'next/font/google'
 import { Sofa, PersonStanding, Users, Dumbbell, Trophy, X } from 'lucide-react'
+import { database } from '@/app/appwrite'
+import type { CookiesStatic } from 'js-cookie'
+import JsCookie from 'js-cookie'
+
+const Cookies: CookiesStatic = JsCookie
 
 const comfortaa = Comfortaa({ subsets: ['latin'] })
 const lexend = Lexend({ subsets: ['latin'] })
@@ -30,21 +35,12 @@ type UserData = {
   painLevel: number
 }
 
-// Mock initial user data
-const initialUserData: UserData = {
-  age: '30',
-  gender: 'female',
-  weight: '150',
-  height: '65',
-  activityLevel: 'Moderate',
-  healthConditions: ['Stress & Anxiety'],
-  foodAllergies: ['Peanuts'],
-  dietaryPreferences: ['Vegetarian'],
-  anxietyLevel: 4,
-  painLevel: 2
+interface ProfileEditProps {
+  userData: UserData;
+  onSave: (userData: UserData) => Promise<void>;
 }
 
-export function ProfileEdit() {
+export function ProfileEdit({ userData: initialUserData, onSave }: ProfileEditProps) {
   const [userData, setUserData] = useState<UserData>(initialUserData)
   const [isEditing, setIsEditing] = useState(false)
 
@@ -63,10 +59,48 @@ export function ProfileEdit() {
   }
 
   const handleSave = async () => {
-    console.log('Saving user data:', userData)
-    // Here you would typically send this data to your backend
-    setIsEditing(false)
-    alert('Profile updated successfully!')
+    try {
+      const uniqueId = Cookies.get('uniqueId')
+      
+      if (!uniqueId) {
+        setIsEditing(false)
+        throw new Error('No uniqueId found in cookies')
+      }
+
+      const documentId = `user_profile_${uniqueId.slice(-4)}`
+      const updatedData = {
+        Age: parseInt(userData.age) || 0,
+        Gender: userData.gender || '',
+        Weight: parseInt(userData.weight) || 0,
+        Height: parseInt(userData.height) || 0,
+        ActivityLevel: userData.activityLevel || '',
+        HealthConcerns: userData.healthConditions || [],
+        FoodAllergy: userData.foodAllergies || [],
+        DietaryPreference: userData.dietaryPreferences || [],
+        AnxietyLevel: userData.anxietyLevel || 1,
+        PainLevel: userData.painLevel || 1,
+        userID: uniqueId
+      }
+
+      // Update document in database
+      await database.updateDocument(
+        'foodfixrdb',
+        'user_profile',
+        documentId,
+        updatedData
+      )
+
+      // Only call onSave and update UI state if database update succeeds
+      await onSave(userData)
+      setIsEditing(false)
+    } catch (error: any) {
+      setIsEditing(false)
+      alert(
+        error.message === 'No uniqueId found in cookies'
+          ? 'Please log in again to update your profile.'
+          : 'Failed to save profile changes. Please try again.'
+      )
+    }
   }
 
   const ActivityLevelCard = ({ level, icon: Icon, description }: { level: string, icon: any, description: string }) => (

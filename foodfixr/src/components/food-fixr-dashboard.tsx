@@ -11,7 +11,11 @@ import { Comfortaa, Lexend } from 'next/font/google'
 const comfortaa = Comfortaa({ subsets: ['latin'] })
 const lexend = Lexend({ subsets: ['latin'] })
 
-export function FoodFixrDashboard() {
+interface FoodFixrDashboardProps {
+  username: string;
+}
+
+export function FoodFixrDashboard({ username }: FoodFixrDashboardProps) {
   const [currentTime, setCurrentTime] = useState(new Date())
   const router = useRouter()
 
@@ -25,7 +29,7 @@ export function FoodFixrDashboard() {
       <Card className="w-full max-w-md mx-auto p-6 rounded-3xl bg-[#f5f5f5] shadow-[0_8px_30px_rgba(0,255,255,0.2)]">
         {/* Welcome and Time Section */}
         <div className="w-full text-center mb-8">
-          <h1 className="text-2xl md:text-3xl font-bold mb-2 text-[#333333]" tabIndex={0}>Welcome, User!</h1>
+          <h1 className="text-2xl md:text-3xl font-bold mb-2 text-[#333333]" tabIndex={0}>Welcome, {username}!</h1>
           <p className={`text-lg text-[#666666] ${lexend.className}`} aria-live="polite" role="timer">
             Current time: {currentTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
           </p>

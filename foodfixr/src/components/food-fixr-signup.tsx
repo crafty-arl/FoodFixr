@@ -1,26 +1,114 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import Image from 'next/image'
 import { Comfortaa, Lexend } from 'next/font/google'
+import { CheckCircle2, XCircle } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import Cookies from 'js-cookie'
 
 const comfortaa = Comfortaa({ subsets: ['latin'] })
 const lexend = Lexend({ subsets: ['latin'] })
 
 export function FoodFixrSignup() {
+  const router = useRouter()
   const [loading, setLoading] = useState(false)
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [passwordError, setPasswordError] = useState('')
+  const [error, setError] = useState('')
+  const [passwordChecks, setPasswordChecks] = useState({
+    length: false,
+    uppercase: false,
+    lowercase: false,
+    number: false,
+    special: false
+  })
+  const [username, setUsername] = useState('')
+
+  const validatePassword = (password: string) => {
+    const minLength = 8
+    const hasUpperCase = /[A-Z]/.test(password)
+    const hasLowerCase = /[a-z]/.test(password)
+    const hasNumbers = /\d/.test(password)
+    const hasSpecialChar = /[!@#$%^&*(),.?":{}|<>]/.test(password)
+
+    const checks = {
+      length: password.length >= minLength,
+      uppercase: hasUpperCase,
+      lowercase: hasLowerCase,
+      number: hasNumbers,
+      special: hasSpecialChar
+    }
+
+    setPasswordChecks(checks)
+
+    if (password.length < minLength) return 'Password must be at least 8 characters long'
+    if (!hasUpperCase) return 'Password must contain at least one uppercase letter'
+    if (!hasLowerCase) return 'Password must contain at least one lowercase letter'
+    if (!hasNumbers) return 'Password must contain at least one number'
+    if (!hasSpecialChar) return 'Password must contain at least one special character'
+    return ''
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    setError('')
+    
+    const passwordValidationError = validatePassword(password)
+    if (passwordValidationError) {
+      setPasswordError(passwordValidationError)
+      return
+    }
+    
+    if (password !== confirmPassword) {
+      setPasswordError('Passwords do not match')
+      return
+    }
+    
+    setPasswordError('')
     setLoading(true)
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 1000))
-    setLoading(false)
+
+    try {
+      const response = await fetch('/api/crossmint', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email, password, username }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        if (response.status === 409 || data.type === 'user_already_exists') {
+          throw new Error('An account with this email already exists. Please try logging in instead.')
+        }
+        throw new Error(data.error || data.message || 'Failed to create account')
+      }
+
+      if (!data.publicKey || !data.uniqueId) {
+        throw new Error('Invalid response from server - missing required fields')
+      }
+
+      Cookies.set('uniqueId', data.uniqueId, {
+        expires: 7,
+        path: '/',
+        sameSite: 'strict'
+      });
+
+      router.push(data.redirectUrl || '/account-setup')
+
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to create account. Please try again.')
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
@@ -51,11 +139,14 @@ export function FoodFixrSignup() {
               <Label htmlFor="username" className="text-[#333333] font-medium">Username</Label>
               <Input
                 id="username"
-                placeholder="coolchef123"
+                type="text"
+                placeholder="chefsmith"
                 required
-                className="bg-white border-[#00FFFF] focus:ring-2 focus:ring-[#00FFFF] focus:ring-offset-2"
+                className="bg-white border-gray-300 focus:ring-2 focus:ring-gray-300 focus:ring-offset-2"
                 aria-required="true"
                 aria-invalid="false"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
               />
             </div>
             <div className="space-y-2">
@@ -65,9 +156,11 @@ export function FoodFixrSignup() {
                 type="email"
                 placeholder="chef@example.com"
                 required
-                className="bg-white border-[#00FFFF] focus:ring-2 focus:ring-[#00FFFF] focus:ring-offset-2"
+                className="bg-white border-gray-300 focus:ring-2 focus:ring-gray-300 focus:ring-offset-2"
                 aria-required="true"
                 aria-invalid="false"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
               />
             </div>
             <div className="space-y-2">
@@ -76,30 +169,63 @@ export function FoodFixrSignup() {
                 id="password"
                 type="password"
                 required
-                className="bg-white border-[#00FFFF] focus:ring-2 focus:ring-[#00FFFF] focus:ring-offset-2"
+                className="bg-white border-gray-300 focus:ring-2 focus:ring-gray-300 focus:ring-offset-2"
                 aria-required="true"
-                aria-invalid="false"
+                aria-invalid={!!passwordError}
                 minLength={8}
                 aria-describedby="password-requirements"
+                value={password}
+                onChange={(e) => {
+                  setPassword(e.target.value)
+                  setPasswordError(validatePassword(e.target.value))
+                }}
               />
-              <p id="password-requirements" className="text-xs text-[#666666]">Password must be at least 8 characters long</p>
+              <ul id="password-requirements" className="text-xs text-[#666666] space-y-1">
+                <li className="flex items-center gap-2">
+                  {passwordChecks.length ? <CheckCircle2 className="h-4 w-4 text-green-500" /> : <XCircle className="h-4 w-4 text-red-500" />}
+                  At least 8 characters long
+                </li>
+                <li className="flex items-center gap-2">
+                  {passwordChecks.uppercase ? <CheckCircle2 className="h-4 w-4 text-green-500" /> : <XCircle className="h-4 w-4 text-red-500" />}
+                  At least one uppercase letter
+                </li>
+                <li className="flex items-center gap-2">
+                  {passwordChecks.lowercase ? <CheckCircle2 className="h-4 w-4 text-green-500" /> : <XCircle className="h-4 w-4 text-red-500" />}
+                  At least one lowercase letter
+                </li>
+                <li className="flex items-center gap-2">
+                  {passwordChecks.number ? <CheckCircle2 className="h-4 w-4 text-green-500" /> : <XCircle className="h-4 w-4 text-red-500" />}
+                  At least one number
+                </li>
+                <li className="flex items-center gap-2">
+                  {passwordChecks.special ? <CheckCircle2 className="h-4 w-4 text-green-500" /> : <XCircle className="h-4 w-4 text-red-500" />}
+                  At least one special character (!@#$%^&*(),.?":{}|&lt;&gt;)
+                </li>
+              </ul>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="language" className="text-[#333333] font-medium">Preferred Language</Label>
-              <Select defaultValue="en" aria-label="Select your preferred language">
-                <SelectTrigger id="language" className="bg-white border-[#00FFFF] focus:ring-2 focus:ring-[#00FFFF] focus:ring-offset-2">
-                  <SelectValue placeholder="Select language" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="en">English</SelectItem>
-                  <SelectItem value="es">Español</SelectItem>
-                  <SelectItem value="fr">Français</SelectItem>
-                </SelectContent>
-              </Select>
+              <Label htmlFor="confirm-password" className="text-[#333333] font-medium">Confirm Password</Label>
+              <Input
+                id="confirm-password"
+                type="password"
+                required
+                className="bg-white border-gray-300 focus:ring-2 focus:ring-gray-300 focus:ring-offset-2"
+                aria-required="true"
+                aria-invalid={!!passwordError}
+                minLength={8}
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+              />
+              {passwordError && (
+                <p className="text-xs text-red-500" role="alert">{passwordError}</p>
+              )}
+              {error && (
+                <p className="text-xs text-red-500" role="alert">{error}</p>
+              )}
             </div>
             <Button 
               type="submit" 
-              className={`w-full bg-white text-[#333333] border-[#00FFFF] hover:bg-[#00FFFF]/10 shadow-[0_4px_0_#00FFFF] hover:shadow-[0_2px_0_#00FFFF] active:shadow-none active:translate-y-1 transition-all focus:ring-2 focus:ring-[#00FFFF] focus:ring-offset-2 ${lexend.className}`}
+              className={`w-full bg-white text-[#333333] border-[#00FFFF] hover:bg-[#00FFFF]/10 shadow-[0_4px_0_#808080] hover:shadow-[0_2px_0_#808080] active:shadow-none active:translate-y-1 transition-all focus:ring-2 focus:ring-[#00FFFF] focus:ring-offset-2 ${lexend.className}`}
               disabled={loading}
               aria-live="polite"
             >
