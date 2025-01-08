@@ -327,6 +327,43 @@ const COMPLETION_MESSAGES = [
   "Spectacular finish! You've mastered it all! 🌈"
 ];
 
+// Add this helper function to count completed goals from a goal log
+const countCompletedGoals = (goals: string[]) => {
+  return goals.filter(goalText => goalText.includes('Completed: true')).length;
+};
+
+// Modify calculateCategoryScore to include historical goals
+const calculateCategoryScore = (baseScore: number, currentCompletedCount: number, historicalCompletedCount: number): number => {
+  try {
+    // Validate inputs
+    const validBaseScore = Number(baseScore) || 0;
+    const validCurrentCount = Number(currentCompletedCount) || 0;
+    const validHistoricalCount = Number(historicalCompletedCount) || 0;
+    
+    // Calculate total completed goals bonus (0.5 points per completed goal)
+    const totalCompletedGoals = validCurrentCount + validHistoricalCount;
+    const goalBonus = totalCompletedGoals * 0.5;
+    
+    // Calculate total score and cap at 8.0
+    const totalScore = Math.min(8, validBaseScore + goalBonus);
+    
+    console.log('Score calculation:', {
+      baseScore: validBaseScore,
+      currentCompleted: validCurrentCount,
+      historicalCompleted: validHistoricalCount,
+      totalCompleted: totalCompletedGoals,
+      bonus: goalBonus,
+      totalScore
+    });
+    
+    // Return rounded score to 2 decimal places
+    return Number(totalScore.toFixed(2));
+  } catch (error) {
+    console.error('Error calculating category score:', error);
+    return baseScore; // Return original score if calculation fails
+  }
+};
+
 // Modify the areAllSurveysComplete function to include more detailed logging
 const areAllSurveysComplete = (categories: SurveyCategory[]) => {
   console.log('\n🔍 CHECKING SURVEY COMPLETION STATUS');
@@ -381,9 +418,26 @@ const generateGoalsForCategory = async (
   database: any,
   questions: Question[],
   setCategoryGoals: React.Dispatch<React.SetStateAction<{ [key: string]: GoalLog }>>,
-  categoryGoals: { [key: string]: GoalLog }
+  categoryGoals: { [key: string]: GoalLog },
+  setSelectedSurvey: React.Dispatch<React.SetStateAction<Survey | null>>
 ) => {
   try {
+    // Check if all surveys are complete before generating goals
+    const allSurveysComplete = Object.entries(categoryStats).every(([cat, stats]: [string, any]) => {
+      const hasCompletedSurvey = stats.answeredCount === stats.total && stats.total > 0;
+      console.log(`Survey completion check for ${cat}:`, {
+        answeredCount: stats.answeredCount,
+        total: stats.total,
+        isComplete: hasCompletedSurvey
+      });
+      return hasCompletedSurvey;
+    });
+
+    if (!allSurveysComplete) {
+      console.log('❌ Cannot generate goals: Not all surveys are complete');
+      return false;
+    }
+
     console.log(`\n🎯 Generating goals for category: ${category}`);
     console.log('📈 Category Stats:', {
       score: categoryStats[category].percentage,
@@ -513,18 +567,31 @@ const generateGoalsForCategory = async (
         );
         console.log('✅ Goals stored with document ID:', newGoalDoc.$id);
 
-        // Update local state immediately
+        // Update local state immediately with the new goals
+        const newGoalLog: GoalLog = {
+          userid: uniqueId,
+          category: category,
+          goals: goalsArray,
+          date_goals_generated: new Date().toISOString(),
+          isCompleted: false,
+          $id: newGoalDoc.$id
+        };
+
+        // Update categoryGoals state
         setCategoryGoals(prev => ({
           ...prev,
-          [category]: {
-            userid: uniqueId,
-            category: category,
-            goals: goalsArray,
-            date_goals_generated: new Date().toISOString(),
-            isCompleted: false,
-            $id: newGoalDoc.$id
-          }
+          [category]: newGoalLog
         }));
+
+        // Force a re-render of the selected survey
+        if (setSelectedSurvey) {
+          setSelectedSurvey(prevSurvey => {
+            if (prevSurvey?.category === category) {
+              return { ...prevSurvey };
+            }
+            return prevSurvey;
+          });
+        }
 
         // Log current category goals state
         console.log('🔄 Updated category goals state:', {
@@ -603,7 +670,8 @@ const generateGoalsForLowScoreCategories = async (
         database,
         questions,
         setCategoryGoals,
-        categoryGoals
+        categoryGoals,
+        null
       );
       // Add a small delay between requests to prevent rate limiting
       await new Promise(resolve => setTimeout(resolve, 1000));
@@ -887,33 +955,27 @@ export const SurveysAndGoalsComponent = function FoodFixrSurveyGoals() {
           return;
         }
 
-        // First fetch all questions
-        const questionsResult = await database.listDocuments(
-          'foodfixrdb',
-          'risk_assesment_questions',
-          [Query.limit(1000)]
-        );
-
-        const responsesResult = await database.listDocuments(
-          'foodfixrdb',
-          'user_surveryquestions_log',
-          [
+        // Fetch questions, responses, and goals
+        const [questionsResult, responsesResult, goalsResult] = await Promise.all([
+          database.listDocuments('foodfixrdb', 'risk_assesment_questions', [Query.limit(1000)]),
+          database.listDocuments('foodfixrdb', 'user_surveryquestions_log', [
             Query.equal('userid', uniqueId),
             Query.limit(1000)
-          ]
-        );
+          ]),
+          database.listDocuments('foodfixrdb', 'food_fixr_ai_logs', [
+            Query.equal('userid', uniqueId),
+            Query.limit(1000)
+          ])
+        ]);
 
-        // Safely type cast the documents
         const fetchedQuestions = questionsResult.documents as unknown as Question[];
         const fetchedResponses = responsesResult.documents as unknown as Response[];
-        
-        // Check if we have any valid responses
-        const hasValidResponses = fetchedResponses.length > 0;
+        const fetchedGoals = goalsResult.documents;
         
         // Create a map of all questions by their document ID
         const questionsMap = new Map(fetchedQuestions.map(q => [q.$id, q]));
 
-        // Filter valid responses (those that match existing questions)
+        // Filter valid responses
         const validResponses = fetchedResponses.filter(response => 
           questionsMap.has(response.questionid)
         );
@@ -927,6 +989,20 @@ export const SurveysAndGoalsComponent = function FoodFixrSurveyGoals() {
           acc[category].push(question);
           return acc;
         }, {} as { [key: string]: Question[] });
+
+        // Calculate completed goals bonus by category
+        const completedGoalsByCategory = fetchedGoals.reduce((acc, doc) => {
+          const category = doc.category;
+          if (!acc[category]) {
+            acc[category] = 0;
+          }
+          // Count completed goals in this document
+          const completedGoals = doc.goals.filter((goal: string) => 
+            goal.includes('Completed: true')
+          ).length;
+          acc[category] += completedGoals * 0.15; // Add 0.15 for each completed goal
+          return acc;
+        }, {} as { [key: string]: number });
 
         // Calculate stats for each category
         const stats: { [key: string]: CategoryStats } = {};
@@ -945,8 +1021,13 @@ export const SurveysAndGoalsComponent = function FoodFixrSurveyGoals() {
             totalAnsweredQuestions += categoryResponses.length;
           }
 
-          const averageScore = categoryResponses.length > 0 ? 
+          // Calculate base average score from survey responses
+          let averageScore = categoryResponses.length > 0 ? 
             (categoryTotalScore / categoryResponses.length) : 0;
+
+          // Add completed goals bonus
+          const goalsBonus = completedGoalsByCategory[category] || 0;
+          averageScore = Math.min(8, averageScore + goalsBonus); // Cap at 8
 
           stats[category] = {
             total: categoryQuestions.length,
@@ -957,47 +1038,51 @@ export const SurveysAndGoalsComponent = function FoodFixrSurveyGoals() {
           };
         });
 
-        // Calculate overall score only if we have valid responses
-        const overallAverageScore = hasValidResponses && totalAnsweredQuestions > 0 ? 
-          (overallTotalScore / totalAnsweredQuestions) : 0;
+        // Calculate overall score including goals bonus
+        const overallAverageScore = totalAnsweredQuestions > 0 ? 
+          Math.min(8, (overallTotalScore / totalAnsweredQuestions) + 
+            (Object.values(completedGoalsByCategory).reduce((sum, bonus) => sum + bonus, 0) / 
+            Object.keys(completedGoalsByCategory).length || 0)) : 0;
 
         // Update states
-        setQuestions(fetchedQuestions);
-        setResponses(validResponses);
-        setOverallScore(getHealthScore(overallAverageScore));
-        setCategoryStats(stats);
+        if (isMounted) {
+          setQuestions(fetchedQuestions);
+          setResponses(validResponses);
+          setOverallScore(getHealthScore(overallAverageScore));
+          setCategoryStats(stats);
 
-        // Update categories data
-        const updatedCategories = INITIAL_CATEGORIES.map(cat => {
-          const categoryStats = stats[cat.name];
-          return {
-            ...cat,
-            progress: categoryStats?.percentage || 0,
-            questionCount: categoryStats?.total || 0,
-            answeredCount: categoryStats?.answeredCount || 0,
-            hasNotification: (categoryStats?.total || 0) > (categoryStats?.answeredCount || 0)
-          };
-        });
+          // Update categories data
+          const updatedCategories = INITIAL_CATEGORIES.map(cat => {
+            const categoryStats = stats[cat.name];
+            return {
+              ...cat,
+              progress: categoryStats?.percentage || 0,
+              questionCount: categoryStats?.total || 0,
+              answeredCount: categoryStats?.answeredCount || 0,
+              hasNotification: (categoryStats?.total || 0) > (categoryStats?.answeredCount || 0)
+            };
+          });
 
-        setData(prevData => ({
-          ...prevData,
-          surveyCategories: updatedCategories
-        }));
+          setData(prevData => ({
+            ...prevData,
+            surveyCategories: updatedCategories
+          }));
+        }
 
       } catch (error) {
         console.error('Initialization error:', error);
       } finally {
-        setIsLoading(false);
+        if (isMounted) {
+          setIsLoading(false);
+        }
       }
     };
 
     initialize();
 
-    // Return cleanup function
     return () => { 
       isMounted = false; 
     };
-
   }, [uniqueId]);
 
   // Add polling effect after the main initialization effect
@@ -1100,138 +1185,156 @@ export const SurveysAndGoalsComponent = function FoodFixrSurveyGoals() {
   // Update the handleGoalComplete function
   const handleGoalComplete = async (categoryId: string, goalIndex: number, isCompleted: boolean, category: string) => {
     try {
-      if (!uniqueId) {
-        throw new Error('User ID not found');
-      }
+      console.log('Goal completion parameters:', {
+        categoryId,
+        goalIndex,
+        isCompleted,
+        category,
+        uniqueId,
+        hasCurrentGoals: !!categoryGoals[category],
+        categoryStats: categoryStats[category]
+      });
 
-      if (!category) {
-        throw new Error('Category is required');
+      // Validate inputs
+      if (!uniqueId || !category || !categoryId) {
+        throw new Error('Missing required parameters');
       }
 
       const currentGoals = categoryGoals[category];
-      if (!currentGoals) {
-        console.error('No goals found for category:', category);
-        return;
+      if (!currentGoals?.goals) {
+        throw new Error(`No goals found for category: ${category}`);
       }
 
-      // Get the latest document for this category
-      const goalsResult = await database.listDocuments(
-        'foodfixrdb',
-        'food_fixr_ai_logs',
-        [
-          Query.equal('userid', uniqueId),
-          Query.equal('category', category),
-          Query.orderDesc('date_goals_generated'),
-          Query.limit(1)
-        ]
-      );
-
-      if (!goalsResult.documents.length) {
-        console.error('No document found for category:', category);
-        return;
-      }
-
-      const latestDocument = goalsResult.documents[0];
-      const documentId = latestDocument.$id;
-
-      // Update the goals array to mark the specific goal as completed
+      // Update current goals
       const updatedGoals = currentGoals.goals.map((goalText, idx) => {
         if (idx === goalIndex) {
-          // Add or update the completion status in the goal text
-          const parts = goalText.split('\n');
-          const hasCompletionStatus = parts.some(part => part.startsWith('Completed:'));
-          if (hasCompletionStatus) {
-            return parts.map(part => 
-              part.startsWith('Completed:') ? `Completed: ${isCompleted}` : part
-            ).join('\n');
-          } else {
-            return goalText + `\nCompleted: ${isCompleted}`;
-          }
+          const parts = goalText.split('\n').filter(part => !part.startsWith('Completed:'));
+          return [...parts, `Completed: ${isCompleted}`].join('\n');
         }
         return goalText;
       });
 
-      // Check if all goals are completed
-      const allGoalsCompleted = updatedGoals.every(goalText => 
+      // Count completed goals from current set
+      const currentCompletedCount = updatedGoals.filter(goalText => 
         goalText.includes('Completed: true')
-      );
+      ).length;
 
-      // Update the document in the database
-      const result = await database.updateDocument(
+      // Get historical completed goals
+      const historicalGoals = allCompletedGoals[category]?.filter(g => g.$id !== categoryId) || [];
+      const historicalCompletedCount = historicalGoals.reduce((total, goalSet) => {
+        return total + countCompletedGoals(goalSet.goals);
+      }, 0);
+
+      const allGoalsCompleted = currentCompletedCount === updatedGoals.length;
+
+      // Calculate new score including historical goals
+      const baseScore = categoryStats[category]?.percentage ?? 0;
+      const newScore = calculateCategoryScore(baseScore, currentCompletedCount, historicalCompletedCount);
+
+      console.log('Score calculation for category:', category, {
+        baseScore,
+        currentCompletedCount,
+        historicalCompletedCount,
+        newScore,
+        allGoalsCompleted
+      });
+
+      // Update database
+      await database.updateDocument(
         'foodfixrdb',
         'food_fixr_ai_logs',
-        documentId,
+        categoryId,
         {
           goals: updatedGoals,
           isCompleted: allGoalsCompleted
         }
       );
 
-      console.log('Updated document:', result);
-
-      // Update both categoryGoals and allCompletedGoals states
+      // Update states
       setCategoryGoals(prev => ({
         ...prev,
         [category]: {
           ...prev[category],
           goals: updatedGoals,
-          isCompleted: allGoalsCompleted
+          isCompleted: allGoalsCompleted,
+          $id: categoryId
         }
       }));
 
-      // Update allCompletedGoals to reflect the changes
-      setAllCompletedGoals(prev => {
-        const updatedCategory = [...(prev[category] || [])];
-        const goalSetIndex = updatedCategory.findIndex(set => set.$id === documentId);
-        
-        if (goalSetIndex !== -1) {
-          updatedCategory[goalSetIndex] = {
-            ...updatedCategory[goalSetIndex],
-            goals: updatedGoals,
-            isCompleted: allGoalsCompleted
-          };
+      setCategoryStats(prev => ({
+        ...prev,
+        [category]: {
+          ...prev[category],
+          percentage: newScore,
+          healthScore: getHealthScore(newScore)
         }
+      }));
 
-        return {
-          ...prev,
-          [category]: updatedCategory
-        };
-      });
+      // Update data state for this category only
+      setData(prev => ({
+        ...prev,
+        surveyCategories: prev.surveyCategories.map(cat => 
+          cat.name === category 
+            ? { ...cat, progress: newScore }
+            : cat
+        )
+      }));
 
-      // If all goals are completed, fetch fresh data to ensure everything is in sync
-      if (allGoalsCompleted) {
-        const freshGoalsResult = await database.listDocuments(
-          'foodfixrdb',
-          'food_fixr_ai_logs',
-          [
-            Query.equal('userid', uniqueId),
-            Query.orderDesc('date_goals_generated'),
-            Query.limit(1000)
-          ]
-        );
+      // Recalculate overall score
+      const updatedStats = {
+        ...categoryStats,
+        [category]: {
+          ...categoryStats[category],
+          percentage: newScore
+        }
+      };
 
-        // Group all goals by category
-        const allGoalsByCategory = freshGoalsResult.documents.reduce((acc: { [key: string]: GoalLog[] }, doc: any) => {
-          if (!acc[doc.category]) {
-            acc[doc.category] = [];
-          }
-          acc[doc.category].push({
-            userid: doc.userid,
-            category: doc.category,
-            goals: doc.goals,
-            date_goals_generated: doc.date_goals_generated,
-            isCompleted: doc.isCompleted || false,
-            $id: doc.$id
-          });
-          return acc;
-        }, {});
+      const totalScore = Object.values(updatedStats).reduce((sum, stat) => sum + stat.percentage, 0);
+      const categoryCount = Object.keys(updatedStats).length;
+      const newOverallScore = categoryCount > 0 ? totalScore / categoryCount : 0;
 
-        setAllCompletedGoals(allGoalsByCategory);
+      setOverallScore(getHealthScore(newOverallScore));
+
+      // Trigger celebration for this category only
+      if (isCompleted) {
+        triggerCelebration(`Great job! Your ${category} score is now ${newScore.toFixed(1)}/8 🎯`);
+      }
+
+      // Handle completion logic for this category only
+      if (allGoalsCompleted && newScore < 5.0) {
+        setShowLoadingDialog(true);
+        try {
+          await generateGoalsForCategory(
+            uniqueId,
+            category,
+            updatedStats,
+            getHealthScore(newOverallScore),
+            responses,
+            database,
+            questions,
+            setCategoryGoals,
+            categoryGoals,
+            setSelectedSurvey
+          );
+        } catch (error) {
+          console.error('Failed to generate new goals:', error);
+        } finally {
+          setShowLoadingDialog(false);
+        }
       }
 
     } catch (error) {
-      console.error('Error updating goal completion:', error);
+      console.error('Error in handleGoalComplete:', error);
+      throw error;
     }
+  };
+
+  // Add a helper function to check if new goals should be generated
+  const shouldGenerateNewGoals = (category: string) => {
+    const categoryScore = categoryStats[category]?.percentage || 0;
+    const currentGoals = categoryGoals[category];
+    
+    return categoryScore < 5.0 && (!currentGoals || currentGoals.isCompleted);
   };
 
   // Add loading dialog component
@@ -1312,6 +1415,276 @@ export const SurveysAndGoalsComponent = function FoodFixrSurveyGoals() {
 
     loadExistingGoals();
   }, [uniqueId, database]); // Add this useEffect to load goals when component mounts
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const calculateScores = async () => {
+      try {
+        if (!uniqueId) return;
+
+        // Fetch all completed goals
+        const goalsResult = await database.listDocuments(
+          'foodfixrdb',
+          'food_fixr_ai_logs',
+          [
+            Query.equal('userid', uniqueId),
+            Query.limit(1000)
+          ]
+        );
+
+        // Calculate completed goals bonus by category
+        const completedGoalsByCategory = goalsResult.documents.reduce((acc, doc) => {
+          const category = doc.category;
+          if (!acc[category]) {
+            acc[category] = 0;
+          }
+          
+          // Count completed goals in this document
+          const completedGoalsCount = doc.goals.filter((goal) => 
+            goal.includes('Completed: true')
+          ).length;
+          
+          // Add 0.15 points for each completed goal
+          acc[category] += completedGoalsCount * 0.15;
+          
+          return acc;
+        }, {});
+
+        // Update category stats with completed goals bonus
+        const updatedStats = { ...categoryStats };
+        let totalScore = 0;
+        let totalCategories = 0;
+
+        Object.entries(updatedStats).forEach(([category, stats]) => {
+          const baseScore = stats.percentage || 0;
+          const goalsBonus = completedGoalsByCategory[category] || 0;
+          const newScore = Math.min(8, baseScore + goalsBonus); // Cap at 8
+
+          updatedStats[category] = {
+            ...stats,
+            percentage: newScore,
+            healthScore: getHealthScore(newScore)
+          };
+
+          totalScore += newScore;
+          totalCategories++;
+        });
+
+        // Calculate new overall score
+        const newOverallScore = totalCategories > 0 ? totalScore / totalCategories : 0;
+
+        if (isMounted) {
+          setCategoryStats(updatedStats);
+          setOverallScore(getHealthScore(newOverallScore));
+
+          // Update categories data with new scores
+          setData(prevData => ({
+            ...prevData,
+            surveyCategories: prevData.surveyCategories.map(cat => ({
+              ...cat,
+              progress: updatedStats[cat.name]?.percentage || 0
+            }))
+          }));
+        }
+
+      } catch (error) {
+        console.error('Error calculating scores:', error);
+      }
+    };
+
+    calculateScores();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [uniqueId, responses, categoryGoals]); // Add categoryGoals to dependencies to recalculate when goals change
+
+  // Add this useEffect near other useEffects in your component
+  useEffect(() => {
+    const calculateInitialScores = async () => {
+      try {
+        if (!uniqueId) {
+          console.log('No uniqueId found, skipping initial score calculation');
+          return;
+        }
+
+        console.log('Calculating initial scores...');
+
+        // Fetch all responses and goals
+        const [responsesResult, goalsResult] = await Promise.all([
+          database.listDocuments(
+            'foodfixrdb',
+            'user_surveryquestions_log',
+            [
+              Query.equal('userid', uniqueId),
+              Query.limit(1000)
+            ]
+          ),
+          database.listDocuments(
+            'foodfixrdb',
+            'food_fixr_ai_logs',
+            [
+              Query.equal('userid', uniqueId),
+              Query.limit(1000)
+            ]
+          )
+        ]);
+
+        // Group responses by category
+        const responsesByCategory = responsesResult.documents.reduce((acc, response) => {
+          if (!acc[response.category]) {
+            acc[response.category] = [];
+          }
+          acc[response.category].push(response);
+          return acc;
+        }, {} as { [key: string]: any[] });
+
+        // Count completed goals by category
+        const completedGoalsByCategory = goalsResult.documents.reduce((acc, doc) => {
+          const category = doc.category;
+          if (!acc[category]) {
+            acc[category] = 0;
+          }
+          
+          // Count completed goals in this document
+          const completedGoalsCount = (doc.goals || []).filter((goal: string) => 
+            goal.includes('Completed: true')
+          ).length;
+          
+          acc[category] = (acc[category] || 0) + completedGoalsCount;
+          return acc;
+        }, {} as { [key: string]: number });
+
+        console.log('Completed goals by category:', completedGoalsByCategory);
+
+        // Calculate scores for each category
+        const updatedStats = { ...categoryStats };
+        let totalScore = 0;
+        let categoryCount = 0;
+
+        Object.entries(responsesByCategory).forEach(([category, responses]) => {
+          // Calculate base score from survey responses
+          const totalPoints = responses.reduce((sum, response) => sum + (response.survey_pts || 0), 0);
+          const baseScore = responses.length > 0 ? totalPoints / responses.length : 0;
+          
+          // Add bonus from completed goals
+          const completedGoalsCount = completedGoalsByCategory[category] || 0;
+          const finalScore = calculateCategoryScore(baseScore, completedGoalsCount, 0);
+
+          console.log(`Category ${category} score calculation:`, {
+            baseScore,
+            completedGoals: completedGoalsCount,
+            finalScore
+          });
+
+          updatedStats[category] = {
+            ...updatedStats[category],
+            percentage: finalScore,
+            healthScore: getHealthScore(finalScore),
+            answeredCount: responses.length,
+            total: questions.filter(q => q.QuestionType === category).length
+          };
+
+          totalScore += finalScore;
+          categoryCount++;
+        });
+
+        // Calculate overall score
+        const overallAverage = categoryCount > 0 ? totalScore / categoryCount : 0;
+
+        console.log('Final calculations:', {
+          categoryScores: updatedStats,
+          overallScore: overallAverage
+        });
+
+        // Update states
+        setCategoryStats(updatedStats);
+        setOverallScore(getHealthScore(overallAverage));
+
+        // Update categories data with new scores
+        setData(prevData => ({
+          ...prevData,
+          surveyCategories: prevData.surveyCategories.map(cat => ({
+            ...cat,
+            progress: updatedStats[cat.name]?.percentage || 0,
+            answeredCount: updatedStats[cat.name]?.answeredCount || 0,
+            questionCount: updatedStats[cat.name]?.total || 0
+          }))
+        }));
+
+      } catch (error) {
+        console.error('Error calculating initial scores:', error);
+      }
+    };
+
+    calculateInitialScores();
+  }, [uniqueId, questions]); // Dependencies: uniqueId and questions
+
+  // Add this new effect hook near your other useEffect hooks
+  useEffect(() => {
+    const generateInitialGoalsIfNeeded = async () => {
+      const category = selectedSurvey?.category;
+      if (!category || !isSurveyCategory(category)) return;
+
+      const currentGoals = categoryGoals[category];
+      const categoryScore = categoryStats[category]?.percentage || 0;
+
+      // Only generate goals if we have no current goals and score is below 5.0
+      if (!currentGoals && categoryScore < 5.0) {
+        setShowLoadingDialog(true);
+        try {
+          const success = await generateGoalsForCategory(
+            uniqueId,
+            category,
+            categoryStats,
+            overallScore,
+            responses,
+            database,
+            questions,
+            setCategoryGoals,
+            categoryGoals,
+            setSelectedSurvey
+          );
+
+          if (success) {
+            const updatedGoalsResult = await database.listDocuments(
+              'foodfixrdb',
+              'food_fixr_ai_logs',
+              [
+                Query.equal('userid', uniqueId),
+                Query.equal('category', category),
+                Query.orderDesc('date_goals_generated'),
+                Query.limit(1)
+              ]
+            );
+
+            if (updatedGoalsResult.documents.length > 0) {
+              const latestGoals = updatedGoalsResult.documents[0];
+              setCategoryGoals(prev => ({
+                ...prev,
+                [category]: {
+                  userid: latestGoals.userid,
+                  category: latestGoals.category,
+                  goals: latestGoals.goals,
+                  date_goals_generated: latestGoals.date_goals_generated,
+                  isCompleted: false,
+                  $id: latestGoals.$id
+                }
+              }));
+              setSelectedSurvey(prev => ({...prev!}));
+            }
+          }
+        } catch (error) {
+          console.error('Error generating initial goals:', error);
+        } finally {
+          setShowLoadingDialog(false);
+        }
+      }
+    };
+
+    generateInitialGoalsIfNeeded();
+  }, [selectedSurvey?.category, categoryGoals, categoryStats, uniqueId]);
 
   if (isLoading) {
     return <LoadingSpinner />;
@@ -1749,34 +2122,26 @@ export const SurveysAndGoalsComponent = function FoodFixrSurveyGoals() {
 
               <TabsContent value="goals" className="mt-4">
                 <Card>
-                  <CardHeader>
-                    <CardTitle>Your Active {selectedSurvey.category} Goals</CardTitle>
-                  </CardHeader>
                   <CardContent>
                     <div className="space-y-4">
                       {(() => {
                         const category = selectedSurvey?.category;
-                        console.log('🎯 Rendering goals for category:', {
-                          category,
-                          hasGoals: category ? !!categoryGoals[category] : false,
-                          goalsCount: category ? categoryGoals[category]?.goals?.length : 0,
-                          allCategories: Object.keys(categoryGoals)
-                        });
-
-                        if (!isSurveyCategory(category)) {
-                          console.log('❌ Invalid category:', category);
-                          return null;
-                        }
                         
-                        const currentGoals = categoryGoals[category];
-                        console.log('📊 Current goals:', {
-                          category,
-                          goals: currentGoals?.goals,
-                          isCompleted: currentGoals?.isCompleted
-                        });
+                        if (!category) return null;
+                        
+                        // Check if ALL surveys are complete
+                        const allSurveysComplete = Object.entries(categoryStats).every(([cat, stats]: [string, any]) => 
+                          stats.answeredCount === stats.total && stats.total > 0
+                        );
 
-                        // Show survey completion message if needed
-                        if (selectedSurvey.questions.filter(q => !responses.some(r => r.questionid === q.$id)).length > 0) {
+                        // If not all surveys are complete, show which ones need to be completed
+                        if (!allSurveysComplete) {
+                          const incompleteSurveys = Object.entries(categoryStats)
+                            .filter(([cat, stats]: [string, any]) => 
+                              stats.answeredCount !== stats.total || stats.total === 0
+                            )
+                            .map(([cat]) => cat);
+
                           return (
                             <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4">
                               <div className="flex">
@@ -1786,77 +2151,123 @@ export const SurveysAndGoalsComponent = function FoodFixrSurveyGoals() {
                                   </svg>
                                 </div>
                                 <div className="ml-3">
-                                  <p className="text-sm text-yellow-700">
-                                    Risk assessment must be completed before personalized goals can be recommended.
-                                  </p>
+                                  <div className="text-sm text-yellow-700">
+                                    <p className="mb-2">
+                                      All risk assessments must be completed before personalized goals can be recommended.
+                                    </p>
+                                    <div>
+                                      <span className="font-semibold">
+                                        Please complete the following assessments:
+                                      </span>
+                                      <ul className="list-disc ml-4 mt-2">
+                                        {incompleteSurveys.map(survey => (
+                                          <li key={survey}>
+                                            {survey === 'Pre_probiotics' ? 'Pre/Probiotics' : 
+                                             survey === 'Gut_BrainHealth' ? 'Gut-Brain Health' : 
+                                             survey}
+                                            {' '}
+                                            ({categoryStats[survey].answeredCount}/{categoryStats[survey].total} completed)
+                                          </li>
+                                        ))}
+                                      </ul>
+                                    </div>
+                                  </div>
                                 </div>
                               </div>
                             </div>
                           );
                         }
 
+                        // Now we know all surveys are complete, continue with normal goal display logic
+                        if (!isSurveyCategory(category)) {
+                          console.log('❌ Invalid category:', category);
+                          return null;
+                        }
+
+                        const currentGoals = categoryGoals[category];
+                        const categoryScore = categoryStats[category]?.percentage || 0;
+                        
+                        // Show loading state while goals are being generated
+                        if (!currentGoals && categoryScore < 5.0) {
+                          return (
+                            <div className="text-center py-8">
+                              <div className="animate-pulse">
+                                <p className="text-gray-600">Generating personalized goals...</p>
+                              </div>
+                            </div>
+                          );
+                        }
+
                         // Show current goals if they exist
-                        if (currentGoals && !currentGoals.isCompleted) {
+                        if (currentGoals) {
+                          const showExcellentMessage = categoryScore > 5.0;
+
                           return (
                             <div className="mt-6">
+                              {showExcellentMessage && (
+                                <div className="bg-green-50 border-l-4 border-green-500 p-4 mb-6">
+                                  <div className="flex">
+                                    <div className="flex-shrink-0">
+                                      <svg className="h-5 w-5 text-green-500" viewBox="0 0 20 20" fill="currentColor">
+                                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                                      </svg>
+                                    </div>
+                                    <div className="ml-3">
+                                      <p className="text-sm text-green-700">
+                                        Excellent work! Your score is above 5.0. Keep maintaining these healthy habits!
+                                      </p>
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
                               <div className="text-sm font-medium text-gray-600 mb-4">
                                 Current Goals (Generated on {new Date(currentGoals.date_goals_generated).toLocaleDateString()}):
                               </div>
                               <div className="space-y-2">
                                 {currentGoals.goals.map((goalText, index) => {
-                                  console.log('Rendering goal:', { index, goalText });
+                                  const isCompleted = goalText.includes('Completed: true');
                                   const parts = goalText.split('\n');
-                                  const goal = parts.find(p => p.startsWith('Goal:'))?.replace('Goal: ', '') || '';
-                                  const benefit = parts.find(p => p.startsWith('Benefit:'))?.replace('Benefit: ', '') || '';
-                                  const tips = parts.find(p => p.startsWith('Tips:'))?.replace('Tips: ', '') || '';
-                                  const completionStatus = parts.find(p => p.startsWith('Completed:'));
-                                  const isGoalCompleted = completionStatus ? completionStatus.includes('true') : false;
+                                  const goalPart = parts.find(part => part.startsWith('Goal:'))?.replace('Goal:', '').trim() || '';
+                                  const categoryPart = parts.find(part => part.startsWith('Category:'))?.replace('Category:', '').trim() || '';
+                                  const benefitPart = parts.find(part => part.startsWith('Benefit:'))?.replace('Benefit:', '').trim() || '';
+                                  const tipsPart = parts.find(part => part.startsWith('Tips:'))?.replace('Tips:', '').trim() || '';
                                   
                                   return (
-                                    <div 
-                                      key={index}
-                                      className="flex items-center justify-between p-2 bg-gray-50 rounded hover:bg-gray-100 transition-colors"
-                                    >
-                                      <div className="flex items-center gap-2">
-                                        <input
-                                          type="checkbox"
-                                          checked={isGoalCompleted}
-                                          onChange={(e) => handleGoalComplete(currentGoals.$id || '', index, e.target.checked, category)}
-                                          className="w-4 h-4"
-                                        />
-                                        <span className={`text-sm ${isGoalCompleted ? 'line-through text-gray-500' : ''}`}>
-                                          {goal}
-                                        </span>
+                                    <div key={index} className="border rounded-lg p-4 bg-white shadow-sm">
+                                      <div className="flex items-start space-x-3">
+                                        <div className="flex-shrink-0 mt-1">
+                                          <input
+                                            type="checkbox"
+                                            checked={isCompleted}
+                                            onChange={async (e) => {
+                                              const newStatus = e.target.checked;
+                                              // Use the current category from selectedSurvey instead of parsing from goal text
+                                              const currentCategory = selectedSurvey?.category;
+                                              if (currentCategory && currentGoals.$id) {
+                                                await handleGoalComplete(currentGoals.$id, index, newStatus, currentCategory);
+                                              }
+                                            }}
+                                            className="h-4 w-4 rounded border-gray-300 text-[#006666] focus:ring-[#006666]"
+                                          />
+                                        </div>
+                                        <div className="flex-1 space-y-2">
+                                          <div className={`text-sm font-medium ${isCompleted ? 'line-through text-gray-500' : 'text-gray-900'}`}>
+                                            {goalPart}
+                                          </div>
+                                          <div className="text-xs text-gray-500">
+                                            {benefitPart && (
+                                              <div className="mt-1">
+                                                <span className="font-medium">Benefit:</span> {benefitPart}
+                                              </div>
+                                            )}
+                                            {tipsPart && (
+                                              <div className="mt-1">
+                                                <span className="font-medium">Tips:</span> {tipsPart}
+                                              </div>
+                                            )}
+                                          </div>
+                                        </div>
                                       </div>
-                                      <TooltipProvider>
-                                        <Tooltip>
-                                          <TooltipTrigger asChild>
-                                            <Button 
-                                              variant="ghost" 
-                                              size="sm"
-                                              className="text-[#006666] hover:text-[#005555] transition-colors"
-                                            >
-                                              <Info className="h-4 w-4" />
-                                            </Button>
-                                          </TooltipTrigger>
-                                          <TooltipContent 
-                                            side="left"
-                                            align="center"
-                                            className="max-w-[300px] p-4 text-sm bg-white border border-[#006666] shadow-lg"
-                                          >
-                                            <div className="space-y-2">
-                                              <div>
-                                                <p className="text-[#006666] font-semibold">Benefits:</p>
-                                                <p className="text-[#006666]">{benefit}</p>
-                                              </div>
-                                              <div>
-                                                <p className="text-[#006666] font-semibold">Tips:</p>
-                                                <p className="text-[#006666]">{tips}</p>
-                                              </div>
-                                            </div>
-                                          </TooltipContent>
-                                        </Tooltip>
-                                      </TooltipProvider>
                                     </div>
                                   );
                                 })}
@@ -1865,13 +2276,7 @@ export const SurveysAndGoalsComponent = function FoodFixrSurveyGoals() {
                           );
                         }
 
-                        // Show message if no goals exist
-                        return (
-                          <div className="text-center text-gray-500 py-8">
-                            <p>No active goals for this category.</p>
-                            <p className="text-sm mt-2">Complete the survey to get personalized goals!</p>
-                          </div>
-                        );
+                        return null;
                       })()}
                     </div>
                   </CardContent>
@@ -1881,95 +2286,90 @@ export const SurveysAndGoalsComponent = function FoodFixrSurveyGoals() {
               <TabsContent value="completed_goals" className="mt-4">
                 <Card>
                   <CardHeader>
-                    <CardTitle>Completed {selectedSurvey?.category} Goals</CardTitle>
+                    <CardTitle>Completed {selectedSurvey.category} Goals</CardTitle>
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-4">
                       {(() => {
                         const category = selectedSurvey?.category;
-                        if (!isSurveyCategory(category)) return null;
-
-                        // Get all completed goals for this category
-                        const categoryGoalSets = allCompletedGoals[category] || [];
-                        const completedGoalSets = categoryGoalSets.filter(goalSet => goalSet.isCompleted);
+                        const completedGoalSets = allCompletedGoals[category]?.filter(goalSet => goalSet.isCompleted) || [];
 
                         if (completedGoalSets.length === 0) {
                           return (
                             <div className="text-center text-gray-500 py-8">
-                              <p>No completed goals yet.</p>
-                              <p className="text-sm mt-2">Complete your active goals to see them here!</p>
+                              <p>No completed goals yet for this category.</p>
                             </div>
                           );
                         }
 
-                        return (
-                          <div className="space-y-6">
-                            {completedGoalSets.map((goalSet, setIndex) => (
-                              <div key={goalSet.$id} className="border-b pb-6 last:border-b-0">
-                                <div className="text-sm text-gray-500 mb-2 font-semibold">
-                                  Completed on {new Date(goalSet.date_goals_generated).toLocaleDateString()}
-                                </div>
-                                <div className="space-y-2">
-                                  {goalSet.goals.map((goalText, index) => {
-                                    const parts = goalText.split('\n');
-                                    const goal = parts[0];
-                                    const benefit = parts.find(p => p.startsWith('Benefit:'));
-                                    const tips = parts.find(p => p.startsWith('Tips:'));
-                                    
-                                    return (
-                                      <div 
-                                        key={index}
-                                        className="flex items-center justify-between p-2 bg-green-50 rounded"
+                        return completedGoalSets.map((goalSet, setIndex) => (
+                          <div key={goalSet.$id} className="border rounded-lg p-4 bg-gray-50">
+                            <div className="text-sm font-medium text-gray-600 mb-4">
+                              Completed on: {new Date(goalSet.date_goals_generated).toLocaleDateString()}
+                            </div>
+                            <div className="space-y-2">
+                              {goalSet.goals.map((goalText, index) => {
+                                const parts = goalText.split('\n');
+                                const goal = parts.find(p => p.startsWith('Goal:'))?.replace('Goal: ', '') || '';
+                                const benefit = parts.find(p => p.startsWith('Benefit:'))?.replace('Benefit: ', '') || '';
+                                const tips = parts.find(p => p.startsWith('Tips:'))?.replace('Tips: ', '') || '';
+
+                                return (
+                                  <div 
+                                    key={`${setIndex}-${index}`}
+                                    className="flex items-center justify-between p-2 bg-white rounded"
+                                  >
+                                    <div className="flex items-center gap-2">
+                                      <svg 
+                                        className="h-4 w-4 text-green-500" 
+                                        fill="none" 
+                                        viewBox="0 0 24 24" 
+                                        stroke="currentColor"
                                       >
-                                        <div className="flex items-center gap-2">
-                                          <svg className="h-5 w-5 text-green-500" viewBox="0 0 20 20" fill="currentColor">
-                                            <path fillRule="evenodd" d="M16.707 5.293a1 0 010 1.414l-8 8a1 0 01-1.414 0l-4-4a1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                                          </svg>
-                                          <span className="text-sm text-green-700">
-                                            {goal.replace('Goal: ', '')}
-                                          </span>
-                                        </div>
-                                        <TooltipProvider>
-                                          <Tooltip>
-                                            <TooltipTrigger asChild>
-                                              <Button 
-                                                variant="ghost" 
-                                                size="sm"
-                                                className="text-green-600 hover:text-green-700 transition-colors"
-                                              >
-                                                <Info className="h-4 w-4" />
-                                              </Button>
-                                            </TooltipTrigger>
-                                            <TooltipContent 
-                                              side="left"
-                                              align="center"
-                                              className="max-w-[300px] p-4 text-sm bg-white border border-green-500 shadow-lg"
-                                            >
-                                              <div className="space-y-2">
-                                                <div>
-                                                  <p className="text-green-700 font-semibold">Benefits:</p>
-                                                  <p className="text-green-600">
-                                                    {benefit?.replace('Benefit: ', '')}
-                                                  </p>
-                                                </div>
-                                                <div>
-                                                  <p className="text-green-700 font-semibold">Tips:</p>
-                                                  <p className="text-green-600">
-                                                    {tips?.replace('Tips: ', '')}
-                                                  </p>
-                                                </div>
-                                              </div>
-                                            </TooltipContent>
-                                          </Tooltip>
-                                        </TooltipProvider>
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                              </div>
-                            ))}
+                                        <path 
+                                          strokeLinecap="round" 
+                                          strokeLinejoin="round" 
+                                          strokeWidth={2} 
+                                          d="M5 13l4 4L19 7" 
+                                        />
+                                      </svg>
+                                      <span className="text-sm text-gray-600">{goal}</span>
+                                    </div>
+                                    <TooltipProvider>
+                                      <Tooltip>
+                                        <TooltipTrigger asChild>
+                                          <Button 
+                                            variant="ghost" 
+                                            size="sm"
+                                            className="text-[#006666] hover:text-[#005555] transition-colors"
+                                          >
+                                            <Info className="h-4 w-4" />
+                                          </Button>
+                                        </TooltipTrigger>
+                                        <TooltipContent 
+                                          side="left"
+                                          align="center"
+                                          className="max-w-[300px] p-4 text-sm bg-white border border-[#006666] shadow-lg"
+                                        >
+                                          <div className="space-y-2">
+                                            <div>
+                                              <p className="text-[#006666] font-semibold">Benefits:</p>
+                                              <p className="text-[#006666]">{benefit}</p>
+                                            </div>
+                                            <div>
+                                              <p className="text-[#006666] font-semibold">Tips:</p>
+                                              <p className="text-[#006666]">{tips}</p>
+                                            </div>
+                                          </div>
+                                        </TooltipContent>
+                                      </Tooltip>
+                                    </TooltipProvider>
+                                  </div>
+                                );
+                              })}
+                            </div>
                           </div>
-                        );
+                        ));
                       })()}
                     </div>
                   </CardContent>
