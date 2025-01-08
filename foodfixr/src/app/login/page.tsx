@@ -4,6 +4,9 @@ import { FoodFixrLogin } from '@/components/food-fixr-login'
 import { useRouter } from 'next/navigation'
 import { useState, useEffect } from 'react'
 import { account } from '@/app/appwrite'
+import Cookies from 'js-cookie'
+import { database } from '@/app/appwrite'
+import { Query } from 'appwrite'
 
 export default function LoginPage() {
   const router = useRouter()
@@ -32,18 +35,59 @@ export default function LoginPage() {
   const handleLogin = async (email: string, password: string, remember: boolean) => {
     try {
       setLoading(true)
-      const result = await account.createEmailPasswordSession(
+      const session = await account.createEmailPasswordSession(
         email,
         password
       )
-      console.log(result)
+      console.log('Login session:', session)
       
-      if (result.$id) {
-        router.push('/')
+      if (!session.$id) {
+        throw new Error('Login failed: No session ID')
       }
+
+      // Get user details
+      const user = await account.get()
+      console.log('User details:', user)
+      
+      if (!user || !user.$id) {
+        throw new Error('Login failed: Could not get user details')
+      }
+      
+      // Store uniqueId in cookies
+      const uniqueId = `ff${user.$id.slice(0, 34)}`
+      Cookies.set('uniqueId', uniqueId, {
+        expires: remember ? 7 : 1,
+        path: '/',
+        sameSite: 'strict'
+      })
+
+      // Check if user has completed profile setup
+      try {
+        const result = await database.listDocuments(
+          'foodfixrdb',
+          'user_profile',
+          [Query.equal('userID', uniqueId)]
+        )
+
+        if (result.documents.length === 0) {
+          // No profile found, redirect to account setup
+          router.push('/account-setup')
+        } else {
+          // Profile exists, redirect to dashboard
+          router.push('/')
+        }
+      } catch (error) {
+        console.error('Error checking user profile:', error)
+        // If we can't check profile, assume it doesn't exist
+        router.push('/account-setup')
+      }
+
+      // Return the user ID in the expected format
+      return { $id: user.$id }
+      
     } catch (error) {
       console.error('Login failed:', error)
-      // Handle login error (show toast, error message, etc.)
+      throw error // Let the login component handle the error display
     } finally {
       setLoading(false)
     }

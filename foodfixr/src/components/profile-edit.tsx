@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -13,11 +13,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import Image from 'next/image'
 import { Comfortaa, Lexend } from 'next/font/google'
 import { Sofa, PersonStanding, Users, Dumbbell, Trophy, X } from 'lucide-react'
-import { database } from '@/app/appwrite'
-import type { CookiesStatic } from 'js-cookie'
-import JsCookie from 'js-cookie'
-
-const Cookies: CookiesStatic = JsCookie
+import { database, account } from '@/app/appwrite'
+import { Query } from 'appwrite'
+import Cookies from 'js-cookie'
+import Loading from './loading'
 
 const comfortaa = Comfortaa({ subsets: ['latin'] })
 const lexend = Lexend({ subsets: ['latin'] })
@@ -35,39 +34,166 @@ type UserData = {
   painLevel: number
 }
 
-interface ProfileEditProps {
-  userData: UserData;
-  onSave: (userData: UserData) => Promise<void>;
-}
-
-export function ProfileEdit({ userData: initialUserData, onSave }: ProfileEditProps) {
-  const [userData, setUserData] = useState<UserData>(initialUserData)
+export function ProfileEdit() {
+  const [userData, setUserData] = useState<UserData>({
+    age: '',
+    gender: '',
+    weight: '',
+    height: '',
+    activityLevel: '',
+    healthConditions: [],
+    foodAllergies: [],
+    dietaryPreferences: [],
+    anxietyLevel: 1,
+    painLevel: 1
+  })
   const [isEditing, setIsEditing] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    const fetchUserData = async () => {
+      try {
+        setLoading(true)
+        console.log('Starting to fetch user data...')
+
+        // First check if user is logged in
+        const user = await account.get()
+        console.log('Current user:', user)
+
+        if (!user) {
+          throw new Error('Not logged in')
+        }
+
+        const uniqueId = `ff${user.$id.slice(0, 34)}`
+        console.log('Generated uniqueId:', uniqueId)
+        
+        Cookies.set('uniqueId', uniqueId, {
+          expires: 7,
+          path: '/',
+          sameSite: 'strict'
+        })
+
+        // Fetch user profile data
+        console.log('Fetching user profile with uniqueId:', uniqueId)
+        const result = await database.listDocuments(
+          'foodfixrdb',
+          'user_profile',
+          [Query.equal('userID', uniqueId)]
+        )
+        console.log('Database query result:', result)
+
+        if (result.documents.length > 0) {
+          const userDoc = result.documents[0]
+          console.log('Found user document:', userDoc)
+          
+          const formattedData = {
+            age: userDoc.Age?.toString() || '',
+            gender: userDoc.Gender?.toLowerCase() || '',
+            weight: userDoc.Weight?.toString() || '',
+            height: userDoc.Height?.toString() || '',
+            activityLevel: userDoc.ActivityLevel || '',
+            healthConditions: Array.isArray(userDoc.HealthConcerns) ? userDoc.HealthConcerns : [],
+            foodAllergies: Array.isArray(userDoc.FoodAllergy) ? userDoc.FoodAllergy : [],
+            dietaryPreferences: Array.isArray(userDoc.DietaryPreference) ? userDoc.DietaryPreference : [],
+            anxietyLevel: Number(userDoc.AnxietyLevel) || 1,
+            painLevel: Number(userDoc.PainLevel) || 1
+          }
+          console.log('Formatted user data:', formattedData)
+          setUserData(formattedData)
+        } else {
+          console.log('No user profile found, attempting to create one...')
+          // If no profile exists, create one
+          const documentId = `user_profile_${uniqueId.slice(-4)}`
+          const initialProfile = {
+            Age: 0,
+            Gender: '',
+            Weight: 0,
+            Height: 0,
+            ActivityLevel: '',
+            HealthConcerns: [],
+            FoodAllergy: [],
+            DietaryPreference: [],
+            AnxietyLevel: 1,
+            PainLevel: 1,
+            userID: uniqueId
+          }
+
+          try {
+            const createdDoc = await database.createDocument(
+              'foodfixrdb',
+              'user_profile',
+              documentId,
+              initialProfile
+            )
+            console.log('Created initial profile:', createdDoc)
+            
+            // Set initial data in state
+            setUserData({
+              age: '',
+              gender: '',
+              weight: '',
+              height: '',
+              activityLevel: '',
+              healthConditions: [],
+              foodAllergies: [],
+              dietaryPreferences: [],
+              anxietyLevel: 1,
+              painLevel: 1
+            })
+            // Automatically enable editing for new profiles
+            setIsEditing(true)
+          } catch (createError) {
+            console.error('Error creating initial profile:', createError)
+            throw new Error('Failed to create initial profile')
+          }
+        }
+      } catch (err) {
+        console.error('Error in fetchUserData:', err)
+        if (err instanceof Error) {
+          if (err.message.includes('Session not found')) {
+            setError('Please log in to view your profile')
+          } else {
+            setError(err.message)
+          }
+        } else {
+          setError('Failed to load profile')
+        }
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchUserData()
+  }, [])
 
   const updateUserData = (field: keyof UserData, value: any) => {
+    console.log(`Updating ${field} with value:`, value)
     setUserData(prev => ({ ...prev, [field]: value }))
   }
 
   const addItem = (field: 'healthConditions' | 'foodAllergies' | 'dietaryPreferences', value: string) => {
+    console.log(`Adding item to ${field}:`, value)
     if (value && !userData[field].includes(value)) {
       updateUserData(field, [...userData[field], value])
     }
   }
 
   const removeItem = (field: 'healthConditions' | 'foodAllergies' | 'dietaryPreferences', item: string) => {
+    console.log(`Removing item from ${field}:`, item)
     updateUserData(field, userData[field].filter(i => i !== item))
   }
 
   const handleSave = async () => {
+    console.log('Attempting to save profile changes...')
+    setLoading(true)
     try {
-      const uniqueId = Cookies.get('uniqueId')
+      const user = await account.get()
+      const uniqueId = `ff${user.$id.slice(0, 34)}`
       
-      if (!uniqueId) {
-        setIsEditing(false)
-        throw new Error('No uniqueId found in cookies')
-      }
-
       const documentId = `user_profile_${uniqueId.slice(-4)}`
+      console.log('Generated document ID:', documentId)
+      
       const updatedData = {
         Age: parseInt(userData.age) || 0,
         Gender: userData.gender || '',
@@ -81,31 +207,43 @@ export function ProfileEdit({ userData: initialUserData, onSave }: ProfileEditPr
         PainLevel: userData.painLevel || 1,
         userID: uniqueId
       }
+      console.log('Prepared data for database update:', updatedData)
 
-      // Update document in database
-      await database.updateDocument(
-        'foodfixrdb',
-        'user_profile',
-        documentId,
-        updatedData
-      )
-
-      // Only call onSave and update UI state if database update succeeds
-      await onSave(userData)
+      try {
+        // First try to update
+        await database.updateDocument(
+          'foodfixrdb',
+          'user_profile',
+          documentId,
+          updatedData
+        )
+      } catch (updateError) {
+        console.log('Update failed, trying to create:', updateError)
+        // If update fails, try to create
+        await database.createDocument(
+          'foodfixrdb',
+          'user_profile',
+          documentId,
+          updatedData
+        )
+      }
+      
+      console.log('Save successful')
       setIsEditing(false)
+      setError(null)
     } catch (error: any) {
-      setIsEditing(false)
-      alert(
-        error.message === 'No uniqueId found in cookies'
-          ? 'Please log in again to update your profile.'
-          : 'Failed to save profile changes. Please try again.'
-      )
+      console.error('Error saving profile:', error)
+      setError(error.message || 'Failed to save profile changes')
+    } finally {
+      setLoading(false)
     }
   }
 
-  const ActivityLevelCard = ({ level, icon: Icon, description }: { level: string, icon: any, description: string }) => (
+  const ActivityLevelCard = ({ level, icon: Icon, description }: { level: string, icon: any, description: string }) => {
+    console.log(`Rendering ActivityLevelCard for level: ${level}`)
+    return (
     <Card 
-      className={`cursor-pointer transition-all ${
+      className={`cursor-pointer transition-all w-full sm:w-40 md:w-44 lg:w-48 h-36 sm:h-40 md:h-44 lg:h-48 ${
         userData.activityLevel === level 
           ? 'border-[#006666] shadow-[0_0_15px_rgba(0,102,102,0.5)]' 
           : 'border-gray-400 hover:border-[#006666] hover:shadow-md'
@@ -114,16 +252,18 @@ export function ProfileEdit({ userData: initialUserData, onSave }: ProfileEditPr
       role="radio"
       aria-checked={userData.activityLevel === level}
     >
-      <CardContent className="flex flex-col items-center p-6 text-center">
-        <Icon className="w-12 h-12 mb-4 text-[#006666]" aria-hidden="true" />
-        <h3 className={`text-lg font-semibold mb-2 text-gray-900 ${comfortaa.className}`}>{level}</h3>
-        <p className={`text-sm text-gray-800 ${lexend.className}`}>{description}</p>
+      <CardContent className="flex flex-col items-center p-2 sm:p-4 text-center h-full justify-center">
+        <Icon className="w-6 h-6 sm:w-8 sm:h-8 mb-1 sm:mb-2 text-[#006666]" aria-hidden="true" />
+        <h3 className={`text-xs sm:text-sm font-semibold mb-1 text-gray-900 ${comfortaa.className}`}>{level}</h3>
+        <p className={`text-[10px] sm:text-xs text-gray-800 ${lexend.className}`}>{description}</p>
       </CardContent>
     </Card>
-  )
+  )}
 
-  const CheckboxGroup = ({ items, field }: { items: string[], field: 'healthConditions' | 'foodAllergies' | 'dietaryPreferences' }) => (
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-4" role="group">
+  const CheckboxGroup = ({ items, field }: { items: string[], field: 'healthConditions' | 'foodAllergies' | 'dietaryPreferences' }) => {
+    console.log(`Rendering CheckboxGroup for ${field} with ${items.length} items`)
+    return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-4" role="group">
       {items.map((item) => (
         <div key={item} className="flex items-center space-x-2">
           <Checkbox 
@@ -138,18 +278,36 @@ export function ProfileEdit({ userData: initialUserData, onSave }: ProfileEditPr
             }}
             disabled={!isEditing}
           />
-          <Label htmlFor={item} className={`text-sm text-gray-800 ${lexend.className}`}>{item}</Label>
+          <Label htmlFor={item} className={`text-xs sm:text-sm text-gray-800 ${lexend.className}`}>{item}</Label>
         </div>
       ))}
     </div>
-  )
+  )}
+
+  console.log('Current userData state:', userData)
+  console.log('isEditing state:', isEditing)
+
+  if (loading) {
+    return <Loading />
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center min-h-screen p-4">
+        <div className="text-center">
+          <h2 className="text-lg sm:text-xl font-bold text-red-600 mb-2">Error</h2>
+          <p className="text-sm sm:text-base text-gray-600">{error}</p>
+        </div>
+      </div>
+    )
+  }
 
   return (
-    <div className={`min-h-screen bg-white p-4 flex flex-col items-center justify-center ${comfortaa.className}`}>
-      <Card className="w-full max-w-4xl bg-[#ffffff] shadow-[0_8px_30px_rgba(0,102,102,0.2)]">
-        <CardHeader className="space-y-3 text-center">
+    <div className={`min-h-screen bg-white p-2 sm:p-4 flex flex-col items-center justify-center ${comfortaa.className}`}>
+      <Card className="w-full max-w-[95%] sm:max-w-4xl bg-[#ffffff] shadow-[0_8px_30px_rgba(0,102,102,0.2)]">
+        <CardHeader className="space-y-3 text-center p-4 sm:p-6">
           <div className="flex justify-center">
-            <div className="w-24 h-24 relative">
+            <div className="w-16 h-16 sm:w-24 sm:h-24 relative">
               <Image
                 src="/foodfixrlogo.png"
                 alt="Food Fixr Logo"
@@ -158,74 +316,76 @@ export function ProfileEdit({ userData: initialUserData, onSave }: ProfileEditPr
               />
             </div>
           </div>
-          <CardTitle className="text-2xl font-bold text-gray-900">
+          <CardTitle className="text-xl sm:text-2xl font-bold text-gray-900">
             Edit Profile
           </CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-2 sm:p-6">
           <Tabs defaultValue="demographics" className="w-full">
-            <TabsList className="grid w-full grid-cols-3" aria-label="Profile sections">
-              <TabsTrigger value="demographics">Demographics</TabsTrigger>
-              <TabsTrigger value="health">Health</TabsTrigger>
-              <TabsTrigger value="preferences">Preferences</TabsTrigger>
+            <TabsList className="grid w-full grid-cols-3 mb-4" aria-label="Profile sections">
+              <TabsTrigger value="demographics" className="text-xs sm:text-base">Demographics</TabsTrigger>
+              <TabsTrigger value="health" className="text-xs sm:text-base">Health</TabsTrigger>
+              <TabsTrigger value="preferences" className="text-xs sm:text-base">Preferences</TabsTrigger>
             </TabsList>
             <TabsContent value="demographics" className="space-y-4">
-              <div>
-                <Label htmlFor="age" className="text-gray-900">Age</Label>
-                <Input
-                  id="age"
-                  type="number"
-                  value={userData.age}
-                  onChange={(e) => updateUserData('age', e.target.value)}
-                  className="bg-white border-[#006666] text-gray-900"
-                  disabled={!isEditing}
-                  aria-label="Enter your age"
-                />
-              </div>
-              <div>
-                <Label htmlFor="gender" className="text-gray-900">Gender</Label>
-                <Select 
-                  onValueChange={(value) => updateUserData('gender', value)} 
-                  value={userData.gender}
-                  disabled={!isEditing}
-                >
-                  <SelectTrigger id="gender" className="bg-white border-[#006666] text-gray-900">
-                    <SelectValue placeholder="Select gender" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="male">Male</SelectItem>
-                    <SelectItem value="female">Female</SelectItem>
-                    <SelectItem value="other">Other</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label htmlFor="weight" className="text-gray-900">Weight (lbs)</Label>
-                <Input
-                  id="weight"
-                  type="number"
-                  value={userData.weight}
-                  onChange={(e) => updateUserData('weight', e.target.value)}
-                  className="bg-white border-[#006666] text-gray-900"
-                  disabled={!isEditing}
-                  aria-label="Enter your weight in pounds"
-                />
-              </div>
-              <div>
-                <Label htmlFor="height" className="text-gray-900">Height (inches)</Label>
-                <Input
-                  id="height"
-                  type="number"
-                  value={userData.height}
-                  onChange={(e) => updateUserData('height', e.target.value)}
-                  className="bg-white border-[#006666] text-gray-900"
-                  disabled={!isEditing}
-                  aria-label="Enter your height in inches"
-                />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="age" className="text-gray-900">Age</Label>
+                  <Input
+                    id="age"
+                    type="number"
+                    value={userData.age}
+                    onChange={(e) => updateUserData('age', e.target.value)}
+                    className="bg-white border-[#006666] text-gray-900"
+                    disabled={!isEditing}
+                    aria-label="Enter your age"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="gender" className="text-gray-900">Gender</Label>
+                  <Select 
+                    onValueChange={(value) => updateUserData('gender', value)} 
+                    value={userData.gender}
+                    disabled={!isEditing}
+                  >
+                    <SelectTrigger id="gender" className="bg-white border-[#006666] text-gray-900">
+                      <SelectValue placeholder="Select gender" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="male">Male</SelectItem>
+                      <SelectItem value="female">Female</SelectItem>
+                      <SelectItem value="other">Other</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label htmlFor="weight" className="text-gray-900">Weight (lbs)</Label>
+                  <Input
+                    id="weight"
+                    type="number"
+                    value={userData.weight}
+                    onChange={(e) => updateUserData('weight', e.target.value)}
+                    className="bg-white border-[#006666] text-gray-900"
+                    disabled={!isEditing}
+                    aria-label="Enter your weight in pounds"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="height" className="text-gray-900">Height (inches)</Label>
+                  <Input
+                    id="height"
+                    type="number"
+                    value={userData.height}
+                    onChange={(e) => updateUserData('height', e.target.value)}
+                    className="bg-white border-[#006666] text-gray-900"
+                    disabled={!isEditing}
+                    aria-label="Enter your height in inches"
+                  />
+                </div>
               </div>
               <div>
                 <Label className="text-gray-900 mb-4 block">Activity Level:</Label>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4" role="radiogroup">
+                <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-4" role="radiogroup">
                   <ActivityLevelCard 
                     level="Sedentary" 
                     icon={Sofa} 
@@ -258,12 +418,27 @@ export function ProfileEdit({ userData: initialUserData, onSave }: ProfileEditPr
               <div>
                 <Label className="text-gray-900 mb-2 block">Health Concerns:</Label>
                 <CheckboxGroup 
-                  items={['Heart Disease', 'Diabetes', 'Obesity', 'Cancer', 'Gut Health', 'Brain Health', 'Immunity', 'Pain & Inflammation', 'Stress & Anxiety']}
+                  items={[
+                    'Heart Disease', 
+                    'Diabetes', 
+                    'Obesity', 
+                    'Cancer', 
+                    'Gut Health', 
+                    'Brain Health', 
+                    'Immunity', 
+                    'Pain & Inflammation', 
+                    'Stress & Anxiety',
+                    'Injury Prevention',
+                    'New Injury Repair',
+                    'Pre-op Prep',
+                    'Post-op Repair',
+                    'Athletic Peak Performance'
+                  ]}
                   field="healthConditions"
                 />
                 <div className="flex flex-wrap gap-2 mt-4" aria-label="Selected health conditions">
                   {userData.healthConditions.map(condition => (
-                    <Badge key={condition} variant="secondary" className={`text-sm text-gray-900 bg-gray-200 ${lexend.className}`}>
+                    <Badge key={condition} variant="secondary" className={`text-xs sm:text-sm text-gray-900 bg-gray-200 ${lexend.className}`}>
                       {condition}
                       {isEditing && (
                         <button
@@ -286,7 +461,7 @@ export function ProfileEdit({ userData: initialUserData, onSave }: ProfileEditPr
                 />
                 <div className="flex flex-wrap gap-2 mt-4" aria-label="Selected food allergies">
                   {userData.foodAllergies.map(allergy => (
-                    <Badge key={allergy} variant="secondary" className={`text-sm text-gray-900 bg-gray-200 ${lexend.className}`}>
+                    <Badge key={allergy} variant="secondary" className={`text-xs sm:text-sm text-gray-900 bg-gray-200 ${lexend.className}`}>
                       {allergy}
                       {isEditing && (
                         <button
@@ -328,39 +503,41 @@ export function ProfileEdit({ userData: initialUserData, onSave }: ProfileEditPr
                   </div>
                 )}
               </div>
-              <div>
-                <Label htmlFor="anxiety-level" className="text-gray-900 mb-2 block">Anxiety Level (1-10)</Label>
-                <Slider
-                  id="anxiety-level"
-                  min={1}
-                  max={10}
-                  step={1}
-                  value={[userData.anxietyLevel]}
-                  onValueChange={(value) => updateUserData('anxietyLevel', value[0])}
-                  className="mb-2"
-                  disabled={!isEditing}
-                  aria-valuemin={1}
-                  aria-valuemax={10}
-                  aria-valuenow={userData.anxietyLevel}
-                />
-                <p className={`text-center text-sm text-gray-900 ${lexend.className}`}>{userData.anxietyLevel}</p>
-              </div>
-              <div>
-                <Label htmlFor="pain-level" className="text-gray-900 mb-2 block">Pain Level (1-10)</Label>
-                <Slider
-                  id="pain-level"
-                  min={1}
-                  max={10}
-                  step={1}
-                  value={[userData.painLevel]}
-                  onValueChange={(value) => updateUserData('painLevel', value[0])}
-                  className="mb-2"
-                  disabled={!isEditing}
-                  aria-valuemin={1}
-                  aria-valuemax={10}
-                  aria-valuenow={userData.painLevel}
-                />
-                <p className={`text-center text-sm text-gray-900 ${lexend.className}`}>{userData.painLevel}</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="anxiety-level" className="text-gray-900 mb-2 block">Anxiety Level (1-10)</Label>
+                  <Slider
+                    id="anxiety-level"
+                    min={1}
+                    max={10}
+                    step={1}
+                    value={[userData.anxietyLevel]}
+                    onValueChange={(value) => updateUserData('anxietyLevel', value[0])}
+                    className="mb-2"
+                    disabled={!isEditing}
+                    aria-valuemin={1}
+                    aria-valuemax={10}
+                    aria-valuenow={userData.anxietyLevel}
+                  />
+                  <p className={`text-center text-xs sm:text-sm text-gray-900 ${lexend.className}`}>{userData.anxietyLevel}</p>
+                </div>
+                <div>
+                  <Label htmlFor="pain-level" className="text-gray-900 mb-2 block">Pain Level (1-10)</Label>
+                  <Slider
+                    id="pain-level"
+                    min={1}
+                    max={10}
+                    step={1}
+                    value={[userData.painLevel]}
+                    onValueChange={(value) => updateUserData('painLevel', value[0])}
+                    className="mb-2"
+                    disabled={!isEditing}
+                    aria-valuemin={1}
+                    aria-valuemax={10}
+                    aria-valuenow={userData.painLevel}
+                  />
+                  <p className={`text-center text-xs sm:text-sm text-gray-900 ${lexend.className}`}>{userData.painLevel}</p>
+                </div>
               </div>
             </TabsContent>
             <TabsContent value="preferences" className="space-y-4">
@@ -372,7 +549,7 @@ export function ProfileEdit({ userData: initialUserData, onSave }: ProfileEditPr
                 />
                 <div className="flex flex-wrap gap-2 mt-4" aria-label="Selected dietary preferences">
                   {userData.dietaryPreferences.map(preference => (
-                    <Badge key={preference} variant="secondary" className={`text-sm text-gray-900 bg-gray-200 ${lexend.className}`}>
+                    <Badge key={preference} variant="secondary" className={`text-xs sm:text-sm text-gray-900 bg-gray-200 ${lexend.className}`}>
                       {preference}
                       {isEditing && (
                         <button
@@ -390,18 +567,18 @@ export function ProfileEdit({ userData: initialUserData, onSave }: ProfileEditPr
             </TabsContent>
           </Tabs>
         </CardContent>
-        <CardFooter className="flex justify-between">
+        <CardFooter className="flex justify-between p-4">
           {isEditing ? (
             <>
               <Button 
                 onClick={() => setIsEditing(false)}
-                className={`bg-white text-gray-900 border-[#006666] hover:bg-[#006666]/10 ${lexend.className}`}
+                className={`bg-white text-gray-900 border-[#006666] hover:bg-[#006666]/10 ${lexend.className} text-xs sm:text-sm`}
               >
                 Cancel
               </Button>
               <Button 
                 onClick={handleSave}
-                className={`bg-white text-gray-900 border-[#006666] hover:bg-[#006666]/10 ${lexend.className}`}
+                className={`bg-white text-gray-900 border-[#006666] hover:bg-[#006666]/10 ${lexend.className} text-xs sm:text-sm`}
               >
                 Save Changes
               </Button>
@@ -409,7 +586,7 @@ export function ProfileEdit({ userData: initialUserData, onSave }: ProfileEditPr
           ) : (
             <Button 
               onClick={() => setIsEditing(true)}
-              className={`bg-white text-gray-900 border-[#006666] hover:bg-[#006666]/10 ${lexend.className}`}
+              className={`bg-white text-gray-900 border-[#006666] hover:bg-[#006666]/10 ${lexend.className} text-xs sm:text-sm`}
             >
               Edit Profile
             </Button>

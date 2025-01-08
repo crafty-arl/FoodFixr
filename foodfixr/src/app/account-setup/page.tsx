@@ -5,10 +5,12 @@ import { useRouter } from 'next/navigation';
 import Cookies from 'js-cookie';
 import AccountSetup from '@/components/account-setup';
 import { database } from '../appwrite';
+import Loading from '@/components/loading';
 
 export default function AccountSetupPage() {
   const router = useRouter();
   const [uniqueId, setUniqueId] = useState<string | undefined>();
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     const storedUniqueId = Cookies.get('uniqueId');
@@ -21,6 +23,7 @@ export default function AccountSetupPage() {
 
   const handleSaveProfile = async (userData: any) => {
     try {
+      setLoading(true);
       const result = await database.createDocument(
         'foodfixrdb',
         'user_profile',
@@ -48,6 +51,8 @@ export default function AccountSetupPage() {
         console.error('Error creating user profile:', err);
         // Handle other errors
       }
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -55,5 +60,10 @@ export default function AccountSetupPage() {
     return null;
   }
 
-  return <AccountSetup onSave={handleSaveProfile} />;
+  return (
+    <>
+      <AccountSetup onSave={handleSaveProfile} />
+      {loading && <Loading />}
+    </>
+  );
 }

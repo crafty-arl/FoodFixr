@@ -9,10 +9,20 @@ import Image from 'next/image'
 import { Comfortaa, Lexend } from 'next/font/google'
 import { CheckCircle2, XCircle } from 'lucide-react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import Cookies from 'js-cookie'
+import { account } from '@/app/appwrite'
 
 const comfortaa = Comfortaa({ subsets: ['latin'] })
 const lexend = Lexend({ subsets: ['latin'] })
+
+type PasswordChecks = {
+  length: boolean
+  uppercase: boolean
+  lowercase: boolean
+  number: boolean
+  special: boolean
+}
 
 export function FoodFixrSignup() {
   const router = useRouter()
@@ -100,20 +110,34 @@ export function FoodFixrSignup() {
         expires: 7,
         path: '/',
         sameSite: 'strict'
-      });
+      })
 
-      router.push(data.redirectUrl || '/account-setup')
+      try {
+        await account.createEmailPasswordSession(email, password)
+      } catch (sessionError) {
+        console.error('Error creating session after signup:', sessionError)
+      }
+
+      router.push('/account-setup')
 
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unable to create account. Please try again.')
+      let errorMessage = 'Unable to create account. Please try again.'
+      
+      if (err instanceof Error) {
+        errorMessage = err.message
+      } else if (typeof err === 'string') {
+        errorMessage = err
+      }
+      
+      setError(errorMessage)
     } finally {
       setLoading(false)
     }
   }
 
   return (
-    <div className={`min-h-screen bg-white p-4 flex flex-col items-center justify-center ${comfortaa.className}`} role="main">
-      <Card className="w-full max-w-md bg-[#f5f5f5] shadow-[0_8px_30px_rgba(0,255,255,0.2)]">
+    <div className={`min-h-screen bg-background p-4 flex flex-col items-center justify-center ${comfortaa.className}`} role="main">
+      <Card className="w-full max-w-md bg-card shadow-[0_8px_30px_rgba(0,255,255,0.2)]">
         <CardHeader className="space-y-3 text-center">
           <div className="flex justify-center">
             <div className="w-24 h-24 relative">
@@ -126,23 +150,23 @@ export function FoodFixrSignup() {
               />
             </div>
           </div>
-          <CardTitle className="text-2xl font-bold text-[#333333]" role="heading" aria-level={1}>
+          <CardTitle className="text-2xl font-bold text-foreground" role="heading" aria-level={1}>
             Food Fixr
           </CardTitle>
-          <p className={`text-sm text-[#666666] ${lexend.className}`} role="contentinfo">
+          <p className={`text-sm text-muted-foreground ${lexend.className}`} role="contentinfo">
             Start your healthy eating journey today!
           </p>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4" aria-label="Sign up form">
             <div className="space-y-2">
-              <Label htmlFor="username" className="text-[#333333] font-medium">Username</Label>
+              <Label htmlFor="username" className="text-foreground font-medium">Username</Label>
               <Input
                 id="username"
                 type="text"
                 placeholder="chefsmith"
                 required
-                className="bg-white border-gray-300 focus:ring-2 focus:ring-gray-300 focus:ring-offset-2"
+                className="bg-background border-input focus:ring-2 focus:ring-ring focus:ring-offset-2"
                 aria-required="true"
                 aria-invalid="false"
                 value={username}
@@ -150,13 +174,13 @@ export function FoodFixrSignup() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="email" className="text-[#333333] font-medium">Email</Label>
+              <Label htmlFor="email" className="text-foreground font-medium">Email</Label>
               <Input
                 id="email"
                 type="email"
                 placeholder="chef@example.com"
                 required
-                className="bg-white border-gray-300 focus:ring-2 focus:ring-gray-300 focus:ring-offset-2"
+                className="bg-background border-input focus:ring-2 focus:ring-ring focus:ring-offset-2"
                 aria-required="true"
                 aria-invalid="false"
                 value={email}
@@ -164,12 +188,12 @@ export function FoodFixrSignup() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="password" className="text-[#333333] font-medium">Password</Label>
+              <Label htmlFor="password" className="text-foreground font-medium">Password</Label>
               <Input
                 id="password"
                 type="password"
                 required
-                className="bg-white border-gray-300 focus:ring-2 focus:ring-gray-300 focus:ring-offset-2"
+                className="bg-background border-input focus:ring-2 focus:ring-ring focus:ring-offset-2"
                 aria-required="true"
                 aria-invalid={!!passwordError}
                 minLength={8}
@@ -180,7 +204,7 @@ export function FoodFixrSignup() {
                   setPasswordError(validatePassword(e.target.value))
                 }}
               />
-              <ul id="password-requirements" className="text-xs text-[#666666] space-y-1">
+              <ul id="password-requirements" className="text-xs text-muted-foreground space-y-1">
                 <li className="flex items-center gap-2">
                   {passwordChecks.length ? <CheckCircle2 className="h-4 w-4 text-green-500" /> : <XCircle className="h-4 w-4 text-red-500" />}
                   At least 8 characters long
@@ -204,12 +228,12 @@ export function FoodFixrSignup() {
               </ul>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="confirm-password" className="text-[#333333] font-medium">Confirm Password</Label>
+              <Label htmlFor="confirm-password" className="text-foreground font-medium">Confirm Password</Label>
               <Input
                 id="confirm-password"
                 type="password"
                 required
-                className="bg-white border-gray-300 focus:ring-2 focus:ring-gray-300 focus:ring-offset-2"
+                className="bg-background border-input focus:ring-2 focus:ring-ring focus:ring-offset-2"
                 aria-required="true"
                 aria-invalid={!!passwordError}
                 minLength={8}
@@ -217,15 +241,15 @@ export function FoodFixrSignup() {
                 onChange={(e) => setConfirmPassword(e.target.value)}
               />
               {passwordError && (
-                <p className="text-xs text-red-500" role="alert">{passwordError}</p>
+                <p className="text-xs text-destructive" role="alert">{passwordError}</p>
               )}
               {error && (
-                <p className="text-xs text-red-500" role="alert">{error}</p>
+                <p className="text-xs text-destructive" role="alert">{error}</p>
               )}
             </div>
             <Button 
               type="submit" 
-              className={`w-full bg-white text-[#333333] border-[#00FFFF] hover:bg-[#00FFFF]/10 shadow-[0_4px_0_#808080] hover:shadow-[0_2px_0_#808080] active:shadow-none active:translate-y-1 transition-all focus:ring-2 focus:ring-[#00FFFF] focus:ring-offset-2 ${lexend.className}`}
+              className={`w-full bg-background text-foreground border-secondary hover:bg-secondary/10 shadow-[0_4px_0_hsl(var(--muted))] hover:shadow-[0_2px_0_hsl(var(--muted))] active:shadow-none active:translate-y-1 transition-all focus:ring-2 focus:ring-ring focus:ring-offset-2 ${lexend.className}`}
               disabled={loading}
               aria-live="polite"
             >
@@ -233,9 +257,9 @@ export function FoodFixrSignup() {
             </Button>
           </form>
         </CardContent>
-        <CardFooter className={`flex flex-col space-y-2 text-center text-sm text-[#666666] ${lexend.className}`}>
-          <p>Already have an account? <a href="/login" className="text-[#008080] hover:underline focus:ring-2 focus:ring-[#00FFFF] focus:ring-offset-2">Sign in</a></p>
-          <p>By signing up, you agree to our <a href="/terms" className="text-[#008080] hover:underline focus:ring-2 focus:ring-[#00FFFF] focus:ring-offset-2">Terms</a> and <a href="/privacy" className="text-[#008080] hover:underline focus:ring-2 focus:ring-[#00FFFF] focus:ring-offset-2">Privacy Policy</a></p>
+        <CardFooter className={`flex flex-col space-y-2 text-center text-sm text-muted-foreground ${lexend.className}`}>
+          <p>Already have an account? <Link href="/login" className="text-primary hover:underline focus:ring-2 focus:ring-ring focus:ring-offset-2">Sign in</Link></p>
+          <p>By signing up, you agree to our <Link href="/terms" className="text-primary hover:underline focus:ring-2 focus:ring-ring focus:ring-offset-2">Terms</Link> and <Link href="/privacy" className="text-primary hover:underline focus:ring-2 focus:ring-ring focus:ring-offset-2">Privacy Policy</Link></p>
         </CardFooter>
       </Card>
     </div>

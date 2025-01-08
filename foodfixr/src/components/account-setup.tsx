@@ -40,7 +40,22 @@ export type UserData = {
   painLevel: number
 }
 
-export const healthConditionsList = ['Heart Disease', 'Diabetes', 'Obesity', 'Cancer', 'Gut Health', 'Brain Health', 'Immunity', 'Pain & Inflammation', 'Stress & Anxiety']
+export const healthConditionsList = [
+  'Heart Disease', 
+  'Diabetes', 
+  'Obesity', 
+  'Cancer', 
+  'Gut Health', 
+  'Brain Health', 
+  'Immunity', 
+  'Pain & Inflammation', 
+  'Stress & Anxiety',
+  'Injury Prevention',
+  'New Injury Repair',
+  'Pre-op Prep',
+  'Post-op Repair',
+  'Athletic Peak Performance'
+]
 
 export const foodAllergiesList = ['Milk Products', 'Eggs', 'Fish', 'Shellfish', 'Tree Nuts', 'Peanuts', 'Wheat', 'Soy', 'Sesame', 'Corn', 'Gluten']
 

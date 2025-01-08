@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { Comfortaa, Lexend } from 'next/font/google'
 import "./globals.css";
 import { initializeCookieStore } from '@/lib/cookies'
+import { ThemeProvider } from '@/components/theme-provider'
+import { CelebrationProvider } from '@/components/celebrate'
 
 const comfortaa = Comfortaa({ 
   subsets: ['latin'],
@@ -29,9 +31,20 @@ export default function RootLayout({
   }
 
   return (
-    <html lang="en">
-      <body className={`${comfortaa.variable} ${lexend.variable} font-primary`}>
-        {children}
+    <html lang="en" suppressHydrationWarning>
+      <body>
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="system"
+          enableSystem
+          disableTransitionOnChange
+        >
+          <body className={`${comfortaa.variable} ${lexend.variable} font-primary`}>
+            <CelebrationProvider>
+              {children}
+            </CelebrationProvider>
+          </body>
+        </ThemeProvider>
       </body>
     </html>
   );
