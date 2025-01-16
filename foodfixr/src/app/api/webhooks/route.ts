@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { databases } from '@/lib/appwrite-config';
 
 export async function POST(request: Request) {
   console.log('🎯 WEBHOOK ROUTE TRIGGERED - /api/webhooks', new Date().toISOString());
@@ -85,6 +86,8 @@ export async function POST(request: Request) {
       data: {
         userId: body.userId,
         task: body.task,
+        category: body.category,
+        score: body.score,
         description: body.task?.description || body.description,
         userProfile: body.userProfile,
         surveyResponses: body.surveyResponses,
@@ -102,6 +105,11 @@ export async function POST(request: Request) {
     });
     
     // Forward the webhook data to Craft the Future
+    console.log('📤 Sending to Craft the Future:', {
+      url: 'https://api.craftthefuture.xyz/webhook/15d621fe-55bd-4066-a8cd-26a6b84f3ade',
+      payload: craftPayload
+    });
+    
     const craftResponse = await fetch('https://api.craftthefuture.xyz/webhook/15d621fe-55bd-4066-a8cd-26a6b84f3ade', {
       method: 'POST',
       headers: {
@@ -112,8 +120,14 @@ export async function POST(request: Request) {
     });
 
     if (!craftResponse.ok) {
-      console.error('❌ Craft the Future webhook failed:', await craftResponse.text());
-      throw new Error(`Webhook forwarding failed with status: ${craftResponse.status}`);
+      const errorText = await craftResponse.text();
+      console.error('❌ Craft the Future webhook failed:', {
+        status: craftResponse.status,
+        statusText: craftResponse.statusText,
+        error: errorText,
+        payload: craftPayload
+      });
+      throw new Error(`Webhook forwarding failed with status: ${craftResponse.status} - ${errorText}`);
     }
 
     const craftResult = await craftResponse.json();
@@ -130,6 +144,71 @@ export async function POST(request: Request) {
         message: 'Grocery list generated successfully'
       };
       responseMessage = 'Grocery list generated';
+    }
+    
+    // Save goals to database if this was a goal generation task
+    if (body.task === 'generate_goals' && craftResult.output) {
+      try {
+        console.log('💾 Saving goals to database...', craftResult.output);
+        
+        interface GoalOutput {
+          goal: string;
+          benefit: string;
+          tips: string;
+        }
+        
+        // Format goals array to match schema
+        const formattedGoals = Array.isArray(craftResult.output) 
+          ? craftResult.output.map((goal: string | GoalOutput) => 
+              typeof goal === 'string' 
+                ? goal 
+                : `Goal: ${goal.goal}\nBenefit: ${goal.benefit}\nTips: ${goal.tips}\nCompleted: false`
+            )
+          : [craftResult.output].map((goal: string | GoalOutput) => 
+              typeof goal === 'string'
+                ? goal
+                : `Goal: ${goal.goal}\nBenefit: ${goal.benefit}\nTips: ${goal.tips}\nCompleted: false`
+            );
+
+        console.log('📝 Formatted goals:', formattedGoals);
+        
+        const goalsDocument = await databases.createDocument(
+          'foodfixrdb',
+          'food_fixr_ai_logs',
+          'unique()',
+          {
+            userid: body.userId,
+            category: body.category,
+            goals: formattedGoals,
+            date_goals_generated: new Date().toISOString(),
+            isCompleted: false
+          }
+        );
+        
+        console.log('✅ Goals saved successfully:', {
+          documentId: goalsDocument.$id,
+          category: body.category,
+          goalsCount: formattedGoals.length,
+          goals: formattedGoals
+        });
+        
+        responseData = {
+          ...craftResult,
+          savedGoals: {
+            documentId: goalsDocument.$id,
+            goals: formattedGoals
+          }
+        };
+      } catch (error: unknown) {
+        const dbError = error as Error;
+        console.error('❌ Failed to save goals to database:', dbError);
+        console.error('Error details:', {
+          name: dbError.name,
+          message: dbError.message,
+          stack: dbError.stack
+        });
+        // Continue execution even if save fails
+      }
     }
     
     return NextResponse.json({

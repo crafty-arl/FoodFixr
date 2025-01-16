@@ -31,7 +31,7 @@ export default function RootLayout({
   }
 
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en" suppressHydrationWarning className={lexend.className}>
       <body>
         <ThemeProvider
           attribute="class"

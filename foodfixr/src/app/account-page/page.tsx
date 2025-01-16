@@ -1,7 +1,7 @@
 'use client'
 
 import { FoodFixrMenuDrawerComponent } from '@/components/food-fixr-menu-drawer';
-import { database } from '@/app/appwrite';
+import { databases as database } from '@/lib/appwrite-config';
 import { Query } from 'appwrite';
 import { ProfileEdit } from '@/components/profile-edit';
 import { useEffect, useState } from 'react';
@@ -51,10 +51,12 @@ export default function AccountPage() {
       } else {
         console.log('No documents found for user');
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error fetching user data:', error);
-      if (error.response) {
-        console.error('Error response:', error.response);
+      if (error instanceof Error) {
+        console.error('Error message:', error.message);
+      } else if (typeof error === 'object' && error !== null && 'response' in error) {
+        console.error('Error response:', (error as { response: unknown }).response);
       }
     } finally {
       setLoading(false);

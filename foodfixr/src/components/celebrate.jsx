@@ -8,8 +8,8 @@ const comfortaa = Comfortaa({ subsets: ['latin'] });
 
 // Create a context for the celebration
 const CelebrationContext = createContext({
-  triggerCelebration: (message) => {},
-  celebrateSurveyCompletion: (isAllComplete) => {}
+  triggerCelebration: () => {},
+  celebrateSurveyCompletion: () => {}
 });
 
 // Export the hook to trigger celebration
@@ -68,16 +68,16 @@ export function CelebrationProvider({ children }) {
       // Show message immediately
       setIsVisible(true);
 
-      // Start fading out after 6 seconds
+      // Start fading out after 3 seconds (reduced from 6)
       const fadeTimer = setTimeout(() => {
         setIsVisible(false);
-      }, 6000);
+      }, 3000);
 
       // Remove confetti and clean up after fade animation (0.5s)
       const cleanupTimer = setTimeout(() => {
         setShowConfetti(false);
         setCelebrationMessage('');
-      }, 6500);
+      }, 3500);
 
       return () => {
         clearTimeout(fadeTimer);
@@ -104,19 +104,24 @@ export function CelebrationProvider({ children }) {
     setShowConfetti(true);
   };
 
+  const value = {
+    triggerCelebration,
+    celebrateSurveyCompletion
+  };
+
   return (
-    <CelebrationContext.Provider value={{ triggerCelebration, celebrateSurveyCompletion }}>
+    <CelebrationContext.Provider value={value}>
       {children}
       {showConfetti && (
         <div className="fixed inset-0 pointer-events-none" style={{ zIndex: 9999 }}>
           <div 
-            className="fixed inset-0 bg-black/30 transition-opacity duration-500"
+            className="fixed inset-0 bg-black/30 transition-opacity duration-300"
             style={{ opacity: isVisible ? 1 : 0 }}
           />
           <Confetti
             width={windowDimensions.width}
             height={windowDimensions.height}
-            numberOfPieces={200}
+            numberOfPieces={150}
             recycle={false}
             colors={[
               '#006666', // Theme color
@@ -127,7 +132,7 @@ export function CelebrationProvider({ children }) {
               '#2196F3', // Blue
             ]}
             gravity={0.3}
-            tweenDuration={4000}
+            tweenDuration={2000}
             confettiSource={{
               x: windowDimensions.width / 2,
               y: windowDimensions.height / 2,
@@ -141,7 +146,7 @@ export function CelebrationProvider({ children }) {
             }}
           />
           <div 
-            className="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-50 transition-all duration-500"
+            className="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-50 transition-all duration-300"
             style={{ 
               opacity: isVisible ? 1 : 0,
               transform: `translate(-50%, ${isVisible ? '-50%' : '-45%'})`,

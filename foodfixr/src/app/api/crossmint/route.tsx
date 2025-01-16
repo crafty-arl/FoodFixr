@@ -1,9 +1,7 @@
 "use server"
 
-
 import { NextResponse } from 'next/server';
-import { database, account } from '@/app/appwrite';
-import { ID } from 'appwrite';
+import { account } from '@/lib/appwrite-config';
 
 export async function POST(request: Request) {
   try {

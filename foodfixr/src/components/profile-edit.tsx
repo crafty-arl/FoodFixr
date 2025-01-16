@@ -13,7 +13,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import Image from 'next/image'
 import { Comfortaa, Lexend } from 'next/font/google'
 import { Sofa, PersonStanding, Users, Dumbbell, Trophy, X } from 'lucide-react'
-import { database, account } from '@/app/appwrite'
+import { databases, account } from '@/lib/appwrite-config'
 import { Query } from 'appwrite'
 import Cookies from 'js-cookie'
 import Loading from './loading'
@@ -21,21 +21,41 @@ import Loading from './loading'
 const comfortaa = Comfortaa({ subsets: ['latin'] })
 const lexend = Lexend({ subsets: ['latin'] })
 
-type UserData = {
-  age: string
-  gender: string
-  weight: string
-  height: string
-  activityLevel: string
+type ProfileEditProps = {
+  onSubmit: (data: ProfileFormData) => void
+  onCancel: () => void
+  loading?: boolean
+}
+
+type ProfileFormData = {
+  username: string
+  email: string
   healthConditions: string[]
-  foodAllergies: string[]
-  dietaryPreferences: string[]
+  dietaryRestrictions: string[]
   anxietyLevel: number
   painLevel: number
 }
 
+type FormError = {
+  message: string
+  field?: keyof ProfileFormData
+}
+
+interface FormData {
+  age: string;
+  gender: string;
+  weight: string;
+  height: string;
+  activityLevel: string;
+  healthConditions: string[];
+  foodAllergies: string[];
+  dietaryPreferences: string[];
+  anxietyLevel: number;
+  painLevel: number;
+}
+
 export function ProfileEdit() {
-  const [userData, setUserData] = useState<UserData>({
+  const [userData, setUserData] = useState<FormData>({
     age: '',
     gender: '',
     weight: '',
@@ -76,7 +96,7 @@ export function ProfileEdit() {
 
         // Fetch user profile data
         console.log('Fetching user profile with uniqueId:', uniqueId)
-        const result = await database.listDocuments(
+        const result = await databases.listDocuments(
           'foodfixrdb',
           'user_profile',
           [Query.equal('userID', uniqueId)]
@@ -120,7 +140,7 @@ export function ProfileEdit() {
           }
 
           try {
-            const createdDoc = await database.createDocument(
+            const createdDoc = await databases.createDocument(
               'foodfixrdb',
               'user_profile',
               documentId,
@@ -167,25 +187,16 @@ export function ProfileEdit() {
     fetchUserData()
   }, [])
 
-  const updateUserData = (field: keyof UserData, value: any) => {
-    console.log(`Updating ${field} with value:`, value)
-    setUserData(prev => ({ ...prev, [field]: value }))
+  const handleInputChange = (field: keyof FormData, value: string | string[] | number) => {
+    setUserData(prev => ({
+      ...prev,
+      [field]: value
+    }))
   }
 
-  const addItem = (field: 'healthConditions' | 'foodAllergies' | 'dietaryPreferences', value: string) => {
-    console.log(`Adding item to ${field}:`, value)
-    if (value && !userData[field].includes(value)) {
-      updateUserData(field, [...userData[field], value])
-    }
-  }
-
-  const removeItem = (field: 'healthConditions' | 'foodAllergies' | 'dietaryPreferences', item: string) => {
-    console.log(`Removing item from ${field}:`, item)
-    updateUserData(field, userData[field].filter(i => i !== item))
-  }
-
-  const handleSave = async () => {
-    console.log('Attempting to save profile changes...')
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    const formData = new FormData(event.currentTarget as HTMLFormElement)
     setLoading(true)
     try {
       const user = await account.get()
@@ -211,7 +222,7 @@ export function ProfileEdit() {
 
       try {
         // First try to update
-        await database.updateDocument(
+        await databases.updateDocument(
           'foodfixrdb',
           'user_profile',
           documentId,
@@ -220,7 +231,7 @@ export function ProfileEdit() {
       } catch (updateError) {
         console.log('Update failed, trying to create:', updateError)
         // If update fails, try to create
-        await database.createDocument(
+        await databases.createDocument(
           'foodfixrdb',
           'user_profile',
           documentId,
@@ -231,9 +242,9 @@ export function ProfileEdit() {
       console.log('Save successful')
       setIsEditing(false)
       setError(null)
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error saving profile:', error)
-      setError(error.message || 'Failed to save profile changes')
+      setError(error instanceof Error ? error.message : 'Failed to save profile changes')
     } finally {
       setLoading(false)
     }
@@ -248,7 +259,7 @@ export function ProfileEdit() {
           ? 'border-[#006666] shadow-[0_0_15px_rgba(0,102,102,0.5)]' 
           : 'border-gray-400 hover:border-[#006666] hover:shadow-md'
       }`}
-      onClick={() => updateUserData('activityLevel', level)}
+      onClick={() => handleInputChange('activityLevel', level)}
       role="radio"
       aria-checked={userData.activityLevel === level}
     >
@@ -271,9 +282,9 @@ export function ProfileEdit() {
             checked={userData[field].includes(item)}
             onCheckedChange={(checked) => {
               if (checked) {
-                addItem(field, item)
+                handleInputChange(field, [...userData[field], item])
               } else {
-                removeItem(field, item)
+                handleInputChange(field, userData[field].filter(i => i !== item))
               }
             }}
             disabled={!isEditing}
@@ -335,7 +346,7 @@ export function ProfileEdit() {
                     id="age"
                     type="number"
                     value={userData.age}
-                    onChange={(e) => updateUserData('age', e.target.value)}
+                    onChange={(e) => handleInputChange('age', e.target.value)}
                     className="bg-white border-[#006666] text-gray-900"
                     disabled={!isEditing}
                     aria-label="Enter your age"
@@ -344,7 +355,7 @@ export function ProfileEdit() {
                 <div>
                   <Label htmlFor="gender" className="text-gray-900">Gender</Label>
                   <Select 
-                    onValueChange={(value) => updateUserData('gender', value)} 
+                    onValueChange={(value) => handleInputChange('gender', value)} 
                     value={userData.gender}
                     disabled={!isEditing}
                   >
@@ -364,7 +375,7 @@ export function ProfileEdit() {
                     id="weight"
                     type="number"
                     value={userData.weight}
-                    onChange={(e) => updateUserData('weight', e.target.value)}
+                    onChange={(e) => handleInputChange('weight', e.target.value)}
                     className="bg-white border-[#006666] text-gray-900"
                     disabled={!isEditing}
                     aria-label="Enter your weight in pounds"
@@ -376,7 +387,7 @@ export function ProfileEdit() {
                     id="height"
                     type="number"
                     value={userData.height}
-                    onChange={(e) => updateUserData('height', e.target.value)}
+                    onChange={(e) => handleInputChange('height', e.target.value)}
                     className="bg-white border-[#006666] text-gray-900"
                     disabled={!isEditing}
                     aria-label="Enter your height in inches"
@@ -443,7 +454,7 @@ export function ProfileEdit() {
                       {isEditing && (
                         <button
                           className="ml-1 hover:text-red-600"
-                          onClick={() => removeItem('healthConditions', condition)}
+                          onClick={() => handleInputChange('healthConditions', userData.healthConditions.filter(c => c !== condition))}
                           aria-label={`Remove ${condition}`}
                         >
                           <X className="h-3 w-3" />
@@ -466,7 +477,7 @@ export function ProfileEdit() {
                       {isEditing && (
                         <button
                           className="ml-1 hover:text-red-600"
-                          onClick={() => removeItem('foodAllergies', allergy)}
+                          onClick={() => handleInputChange('foodAllergies', userData.foodAllergies.filter(a => a !== allergy))}
                           aria-label={`Remove ${allergy}`}
                         >
                           <X className="h-3 w-3" />
@@ -484,7 +495,7 @@ export function ProfileEdit() {
                       onKeyPress={(e) => {
                         if (e.key === 'Enter') {
                           const target = e.target as HTMLInputElement
-                          addItem('foodAllergies', target.value)
+                          handleInputChange('foodAllergies', [...userData.foodAllergies, target.value])
                           target.value = ''
                         }
                       }}
@@ -494,7 +505,7 @@ export function ProfileEdit() {
                       className={`bg-white text-gray-900 border-[#006666] hover:bg-[#006666]/10 ${lexend.className}`}
                       onClick={() => {
                         const input = document.querySelector('input[placeholder="Add custom allergy"]') as HTMLInputElement
-                        addItem('foodAllergies', input.value)
+                        handleInputChange('foodAllergies', [...userData.foodAllergies, input.value])
                         input.value = ''
                       }}
                     >
@@ -512,7 +523,7 @@ export function ProfileEdit() {
                     max={10}
                     step={1}
                     value={[userData.anxietyLevel]}
-                    onValueChange={(value) => updateUserData('anxietyLevel', value[0])}
+                    onValueChange={(value) => handleInputChange('anxietyLevel', value[0])}
                     className="mb-2"
                     disabled={!isEditing}
                     aria-valuemin={1}
@@ -529,7 +540,7 @@ export function ProfileEdit() {
                     max={10}
                     step={1}
                     value={[userData.painLevel]}
-                    onValueChange={(value) => updateUserData('painLevel', value[0])}
+                    onValueChange={(value) => handleInputChange('painLevel', value[0])}
                     className="mb-2"
                     disabled={!isEditing}
                     aria-valuemin={1}
@@ -554,7 +565,7 @@ export function ProfileEdit() {
                       {isEditing && (
                         <button
                           className="ml-1 hover:text-red-600"
-                          onClick={() => removeItem('dietaryPreferences', preference)}
+                          onClick={() => handleInputChange('dietaryPreferences', userData.dietaryPreferences.filter(p => p !== preference))}
                           aria-label={`Remove ${preference}`}
                         >
                           <X className="h-3 w-3" />
@@ -577,7 +588,7 @@ export function ProfileEdit() {
                 Cancel
               </Button>
               <Button 
-                onClick={handleSave}
+                onClick={handleSubmit}
                 className={`bg-white text-gray-900 border-[#006666] hover:bg-[#006666]/10 ${lexend.className} text-xs sm:text-sm`}
               >
                 Save Changes

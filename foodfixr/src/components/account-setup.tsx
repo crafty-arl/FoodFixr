@@ -12,7 +12,7 @@ import { Slider } from "@/components/ui/slider"
 import { Badge } from "@/components/ui/badge"
 import Image from 'next/image'
 import { Comfortaa, Lexend } from 'next/font/google'
-import { Sofa, PersonStanding, Users, Dumbbell, Trophy, X } from 'lucide-react'
+import { Sofa, PersonStanding, Users, Dumbbell, Trophy, LucideIcon } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 
 const comfortaa = Comfortaa({ subsets: ['latin'] })
@@ -101,7 +101,7 @@ export default function AccountSetup({
   const [currentStep, setCurrentStep] = useState(0)
   const [userData, setUserData] = useState<UserData>(initialData)
 
-  const updateUserData = (field: keyof UserData, value: any) => {
+  const updateUserData = <K extends keyof UserData>(field: K, value: UserData[K]) => {
     setUserData(prev => ({ ...prev, [field]: value }))
   }
 
@@ -133,7 +133,7 @@ export default function AccountSetup({
     updateUserData(field, userData[field].filter(i => i !== item))
   }
 
-  const ActivityLevelCard = ({ level, icon: Icon, description }: { level: string, icon: any, description: string }) => (
+  const ActivityLevelCard = ({ level, icon: Icon, description }: { level: string, icon: LucideIcon, description: string }) => (
     <Card 
       className={`cursor-pointer transition-all ${
         userData.activityLevel === level 
@@ -248,28 +248,28 @@ export default function AccountSetup({
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <ActivityLevelCard 
                   level="Sedentary" 
-                  icon={Sofa} 
-                  description="Lives on couch and computer" 
+                  icon={Sofa}
+                  description="Little to no regular exercise, desk job or mostly sitting"
                 />
                 <ActivityLevelCard 
-                  level="Light" 
-                  icon={PersonStanding} 
-                  description="Walks between screen time or shows" 
+                  level="Lightly Active"
+                  icon={PersonStanding}
+                  description="Light exercise 1-3 days/week, active job with lots of walking"
                 />
                 <ActivityLevelCard 
-                  level="Moderate" 
-                  icon={Users} 
-                  description="Social and active with family, pets, and friends" 
+                  level="Moderately Active"
+                  icon={Users}
+                  description="Moderate exercise 3-5 days/week, active lifestyle"
                 />
                 <ActivityLevelCard 
-                  level="Active" 
-                  icon={Dumbbell} 
-                  description="Gets sweaty 30-40 minutes at least 3 times a week" 
+                  level="Very Active"
+                  icon={Dumbbell}
+                  description="Hard exercise 6-7 days/week, very physically demanding job"
                 />
                 <ActivityLevelCard 
-                  level="Very Active" 
-                  icon={Trophy} 
-                  description="Daily fitness routine, may train for races and competitions" 
+                  level="Extremely Active"
+                  icon={Trophy}
+                  description="Hard daily exercise/sports & physical job or training twice per day"
                 />
               </div>
             </div>
@@ -277,153 +277,91 @@ export default function AccountSetup({
 
           {currentStep === 2 && (
             <div className="space-y-4">
-              <Label className={`text-[${textColor}] mb-2 block`}>Select any relevant health concerns:</Label>
-              <CheckboxGroup 
-                items={healthConditionsList}
-                field="healthConditions"
-              />
-              <div className="flex flex-wrap gap-2 mt-4">
-                {userData.healthConditions.map(condition => (
-                  <Badge key={condition} variant="secondary" className={`text-sm ${lexend.className}`}>
-                    {condition}
-                    <button
-                      className="ml-1 hover:text-destructive"
-                      onClick={() => removeItem('healthConditions', condition)}
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
-                  </Badge>
-                ))}
-              </div>
+              <Label className={`text-[${textColor}] mb-4 block text-center`}>Select any health conditions you&apos;d like to address:</Label>
+              <CheckboxGroup items={healthConditionsList} field="healthConditions" />
             </div>
           )}
 
           {currentStep === 3 && (
             <div className="space-y-4">
-              <Label className={`text-[${textColor}] mb-2 block`}>Select any food allergies:</Label>
-              <CheckboxGroup 
-                items={foodAllergiesList}
-                field="foodAllergies"
-              />
-              <div className="flex flex-wrap gap-2 mt-4">
-                {userData.foodAllergies.map(allergy => (
-                  <Badge key={allergy} variant="secondary" className={`text-sm ${lexend.className}`}>
-                    {allergy}
-                    <button
-                      className="ml-1 hover:text-destructive"
-                      onClick={() => removeItem('foodAllergies', allergy)}
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
-                  </Badge>
-                ))}
-              </div>
-              <div className="flex gap-2">
-                <Input 
-                  placeholder="Add custom allergy" 
-                  className={`bg-white border-[${borderColor}]`}
-                  onKeyPress={(e) => {
-                    if (e.key === 'Enter') {
-                      const target = e.target as HTMLInputElement
-                      addItem('foodAllergies', target.value)
-                      target.value = ''
-                    }
-                  }}
-                />
-                <Button 
-                  type="button"
-                  className={`bg-[${buttonBgColor}] text-[${textColor}] border-[${borderColor}] hover:bg-[${buttonHoverColor}] ${lexend.className}`}
-                  onClick={() => {
-                    const input = document.querySelector('input[placeholder="Add custom allergy"]') as HTMLInputElement
-                    addItem('foodAllergies', input.value)
-                    input.value = ''
-                  }}
-                >
-                  Add
-                </Button>
-              </div>
+              <Label className={`text-[${textColor}] mb-4 block text-center`}>Select any food allergies you have:</Label>
+              <CheckboxGroup items={foodAllergiesList} field="foodAllergies" />
             </div>
           )}
 
           {currentStep === 4 && (
             <div className="space-y-4">
-              <Label className={`text-[${textColor}] mb-2 block`}>Select your dietary preferences:</Label>
-              <CheckboxGroup 
-                items={dietaryPreferencesList}
-                field="dietaryPreferences"
-              />
-              <div className="flex flex-wrap gap-2 mt-4">
-                {userData.dietaryPreferences.map(preference => (
-                  <Badge key={preference} variant="secondary" className={`text-sm ${lexend.className}`}>
-                    {preference}
-                    <button
-                      className="ml-1 hover:text-destructive"
-                      onClick={() => removeItem('dietaryPreferences', preference)}
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
-                  </Badge>
-                ))}
-              </div>
+              <Label className={`text-[${textColor}] mb-4 block text-center`}>Select your dietary preferences:</Label>
+              <CheckboxGroup items={dietaryPreferencesList} field="dietaryPreferences" />
             </div>
           )}
 
           {currentStep === 5 && (
-            <div className="space-y-6">
-              <div>
-                <Label htmlFor="anxiety-level" className={`text-[${textColor}] mb-2 block`}>Anxiety Level (1-10)</Label>
+            <div className="space-y-8">
+              <div className="space-y-4">
+                <Label className={`text-[${textColor}] mb-4 block text-center`}>Rate your current anxiety level:</Label>
+                <div className="flex items-center justify-between mb-2">
+                  <span className={`text-sm text-[${textColor}]`}>Low</span>
+                  <span className={`text-sm text-[${textColor}]`}>High</span>
+                </div>
                 <Slider
-                  id="anxiety-level"
-                  min={1}
-                  max={10}
-                  step={1}
                   value={[userData.anxietyLevel]}
-                  onValueChange={(value) => updateUserData('anxietyLevel', value[0])}
-                  className="mb-2"
-                />
-                <p className={`text-center text-sm ${lexend.className}`}>{userData.anxietyLevel}</p>
-              </div>
-              <div>
-                <Label htmlFor="pain-level" className={`text-[${textColor}] mb-2 block`}>Pain Level (1-10)</Label>
-                <Slider
-                  id="pain-level"
-                  min={1}
+                  onValueChange={([value]) => updateUserData('anxietyLevel', value)}
                   max={10}
                   step={1}
-                  value={[userData.painLevel]}
-                  onValueChange={(value) => updateUserData('painLevel', value[0])}
-                  className="mb-2"
+                  className="w-full"
                 />
-                <p className={`text-center text-sm ${lexend.className}`}>{userData.painLevel}</p>
+                <div className="text-center">
+                  <Badge variant="outline" className={`bg-white border-[${borderColor}]`}>
+                    {userData.anxietyLevel}
+                  </Badge>
+                </div>
               </div>
-              <div>
-                <Label className={`text-[${textColor}] mb-2 block`}>Stress Push Notifications</Label>
-                <p className={`text-sm ${lexend.className}`}>You will receive random push notifications asking for your current stress level and what you're doing at the moment to feel that way.</p>
+
+              <div className="space-y-4">
+                <Label className={`text-[${textColor}] mb-4 block text-center`}>Rate your current pain level:</Label>
+                <div className="flex items-center justify-between mb-2">
+                  <span className={`text-sm text-[${textColor}]`}>Low</span>
+                  <span className={`text-sm text-[${textColor}]`}>High</span>
+                </div>
+                <Slider
+                  value={[userData.painLevel]}
+                  onValueChange={([value]) => updateUserData('painLevel', value)}
+                  max={10}
+                  step={1}
+                  className="w-full"
+                />
+                <div className="text-center">
+                  <Badge variant="outline" className={`bg-white border-[${borderColor}]`}>
+                    {userData.painLevel}
+                  </Badge>
+                </div>
               </div>
             </div>
           )}
         </CardContent>
         <CardFooter className="flex justify-between">
-          <Button 
-            onClick={handlePrevious} 
+          <Button
+            variant="outline"
+            onClick={handlePrevious}
             disabled={currentStep === 0}
-            className={`bg-[${buttonBgColor}] text-[${textColor}] border-[${borderColor}] hover:bg-[${buttonHoverColor}] ${lexend.className}`}
+            className={`bg-[${buttonBgColor}] border-[${borderColor}] hover:bg-[${buttonHoverColor}]`}
           >
             Previous
           </Button>
-          {currentStep < steps.length - 1 ? (
+          {currentStep === steps.length - 1 ? (
             <Button 
-              onClick={handleNext}
-              className={`bg-[${buttonBgColor}] text-brand-primary border-brand-secondary hover:bg-[${buttonHoverColor}] font-secondary`}
+              onClick={handleSave}
+              className={`bg-[${buttonBgColor}] border-[${borderColor}] hover:bg-[${buttonHoverColor}]`}
             >
-              Next
+              Complete Setup
             </Button>
           ) : (
             <Button 
-              onClick={handleSave}
-              className={`bg-[${buttonBgColor}] text-[${textColor}] border-[${borderColor}] hover:bg-[${buttonHoverColor}] ${lexend.className}`}
+              onClick={handleNext}
+              className={`bg-[${buttonBgColor}] border-[${borderColor}] hover:bg-[${buttonHoverColor}]`}
             >
-              Complete Setup
+              Next
             </Button>
           )}
         </CardFooter>

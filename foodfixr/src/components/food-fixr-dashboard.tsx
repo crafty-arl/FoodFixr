@@ -1,57 +1,51 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from "@/components/ui/button"
-import { Card } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { Info } from 'lucide-react'
+import { Comfortaa } from 'next/font/google'
 import Image from 'next/image'
-import { Comfortaa, Lexend } from 'next/font/google'
-import { useTheme } from 'next-themes'
-import { User } from 'lucide-react'
-import { database } from '@/app/appwrite'
+import { databases } from '@/lib/appwrite-config'
 import { Query } from 'appwrite'
 import Cookies from 'js-cookie'
 
 const comfortaa = Comfortaa({ subsets: ['latin'] })
-const lexend = Lexend({ subsets: ['latin'] })
 
 interface FoodFixrDashboardProps {
   username: string;
 }
 
 export function FoodFixrDashboard({ username }: FoodFixrDashboardProps) {
-  const [currentTime, setCurrentTime] = useState(new Date())
-  const [lastLoginTime, setLastLoginTime] = useState<string | null>(null)
   const router = useRouter()
-  const { theme } = useTheme()
-  const [mounted, setMounted] = useState(false)
+  const [currentTime, setCurrentTime] = useState(new Date())
+  const [lastLoginTime, setLastLoginTime] = useState<Date | null>(null)
 
   useEffect(() => {
-    setMounted(true)
-    const timer = setInterval(() => setCurrentTime(new Date()), 1000)
+    const timer = setInterval(() => {
+      setCurrentTime(new Date())
+    }, 1000)
 
-    // Fetch last login time
+    return () => clearInterval(timer)
+  }, [])
+
+  useEffect(() => {
     const fetchLastLogin = async () => {
-      try {
-        const uniqueId = Cookies.get('uniqueId')
-        if (!uniqueId) return
+      const uniqueId = Cookies.get('uniqueId')
+      if (!uniqueId) return
 
-        const userId = uniqueId.slice(2) // Remove 'ff' prefix
-        const response = await database.listDocuments(
+      try {
+        const response = await databases.listDocuments(
           'foodfixrdb',
-          'daily_user_login_log',
-          [
-            Query.equal('userID', userId),
-            Query.orderDesc('last_logged_in'),
-            Query.limit(2) // Get last 2 to exclude current session
-          ]
+          'user_sessions',
+          [Query.equal('userId', uniqueId)]
         )
 
-        if (response.documents.length > 1) {
-          // Get the second-to-last login (excluding current session)
-          const lastLogin = new Date(response.documents[1].last_logged_in)
-          setLastLoginTime(lastLogin.toLocaleString())
+        if (response.documents.length > 0) {
+          const lastLogin = new Date(response.documents[0].lastLogin)
+          setLastLoginTime(lastLogin)
         }
       } catch (error) {
         console.error('Error fetching last login:', error)
@@ -59,171 +53,133 @@ export function FoodFixrDashboard({ username }: FoodFixrDashboardProps) {
     }
 
     fetchLastLogin()
-    return () => clearInterval(timer)
   }, [])
 
-  if (!mounted) return null
+  const handleNavigate = (path: string) => {
+    router.push(path)
+  }
 
   return (
-    <div className={`min-h-screen bg-background p-2 sm:p-4 lg:p-6 flex items-center justify-center ${comfortaa.className}`} role="main">
-      <Card className="w-full max-w-[95%] sm:max-w-xl lg:max-w-2xl mx-auto p-2 sm:p-4 lg:p-6 rounded-3xl bg-card shadow-[0_8px_30px_rgba(0,255,255,0.2)]">
-        {/* Welcome and Time Section */}
-        <div className="w-full text-center mb-4 sm:mb-6">
-          <h1 className="text-lg sm:text-xl lg:text-2xl font-bold mb-2 text-foreground" tabIndex={0}>Welcome, {username}!</h1>
-          <p className={`text-sm sm:text-base text-muted-foreground ${lexend.className}`} aria-live="polite" role="timer">
-            Current time: {currentTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-          </p>
-          {lastLoginTime && (
-            <p className={`text-xs sm:text-sm text-muted-foreground mt-2 ${lexend.className}`}>
-              Last login: {lastLoginTime}
-            </p>
-          )}
-        </div>
-
-        {/* Logo Section */}
-        <div className="flex justify-center mb-4 sm:mb-6">
-          <div className="w-32 h-32 sm:w-40 sm:h-40 lg:w-48 lg:h-48 relative">
-            <Image
-              src="/FoodFixrLogo.png"
-              alt="Food Fixr Logo"
-              width={192}
-              height={192}
-              quality={100}
-              priority
-              className="w-full h-full object-contain"
+    <div className="min-h-screen bg-white w-full px-4 sm:px-6 lg:px-8 py-6">
+      <div className="max-w-4xl mx-auto">
+        <div className="flex flex-col items-center mb-6">
+          <div className="w-24 h-24 relative mb-4">
+            <Image 
+              src="/foodfixrlogo.png" 
+              alt="FoodFixr Logo" 
+              fill
+              className="object-contain"
             />
+          </div>
+          <h1 className={`text-2xl font-bold text-[#008080] mb-4 ${comfortaa.className}`}>
+            Welcome back, {username}!
+          </h1>
+          <div className="text-center mb-4">
+            <p className="text-gray-600">
+              Current Time: {currentTime.toLocaleTimeString()}
+            </p>
+            {lastLoginTime && (
+              <p className="text-gray-600">
+                Last Login: {lastLoginTime.toLocaleString()}
+              </p>
+            )}
           </div>
         </div>
 
-        {/* Navigation Buttons */}
-        <TooltipProvider>
-          <nav className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3 lg:gap-4 w-full max-w-full mx-auto" aria-label="Main navigation">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button 
-                  variant="outline" 
-                  className={`flex flex-row sm:flex-col items-center gap-2 h-auto py-2 sm:py-3 px-2 sm:px-3 transition-all bg-background border-[#00FFFF] hover:bg-[#00FFFF]/10 focus:ring-2 focus:ring-[#00FFFF] focus:outline-none shadow-[0_4px_0_#00FFFF] hover:shadow-[0_2px_0_#00FFFF] active:shadow-none active:translate-y-1 ${lexend.className}`}
-                  onClick={() => router.push('/account-page')}
-                  aria-label="Go to Health and Self page"
-                >
-                  <Image
-                    src="/healthselficon.png"
-                    alt=""
-                    width={96}
-                    height={96}
-                    quality={100}
-                    className="w-12 h-12 sm:w-16 sm:h-16 lg:w-20 lg:h-20 object-contain"
-                  />
-                  <span className="text-sm whitespace-nowrap sm:whitespace-normal sm:text-center text-foreground">Health & Self</span>
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Track your health and wellness</p>
-              </TooltipContent>
-            </Tooltip>
-
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button 
-                  variant="outline" 
-                  className={`flex flex-row sm:flex-col items-center gap-2 h-auto py-2 sm:py-3 px-2 sm:px-3 transition-all bg-background border-[#00FFFF] hover:bg-[#00FFFF]/10 focus:ring-2 focus:ring-[#00FFFF] focus:outline-none shadow-[0_4px_0_#00FFFF] hover:shadow-[0_2px_0_#00FFFF] active:shadow-none active:translate-y-1 ${lexend.className}`}
-                  onClick={() => router.push('/surveys-goals')}
-                  aria-label="Go to Surveys and Goals page"
-                >
-                  <Image
-                    src="/2.png"
-                    alt=""
-                    width={96}
-                    height={96}
-                    quality={100}
-                    className="w-12 h-12 sm:w-16 sm:h-16 lg:w-20 lg:h-20 object-contain"
-                  />
-                  <span className="text-sm whitespace-nowrap sm:whitespace-normal sm:text-center text-foreground">Surveys & Goals</span>
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Complete surveys and set goals</p>
-              </TooltipContent>
-            </Tooltip>
-
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button 
-                  variant="outline" 
-                  className={`flex flex-row sm:flex-col items-center gap-2 h-auto py-2 sm:py-3 px-2 sm:px-3 transition-all bg-background border-[#00FFFF] hover:bg-[#00FFFF]/10 focus:ring-2 focus:ring-[#00FFFF] focus:outline-none shadow-[0_4px_0_#00FFFF] hover:shadow-[0_2px_0_#00FFFF] active:shadow-none active:translate-y-1 ${lexend.className}`}
-                  onClick={() => router.push('/food-fixr-groceries')}
-                  aria-label="Go to Custom Grocery List page"
-                >
-                  <Image
-                    src="/Groceries-List.png"
-                    alt=""
-                    width={96}
-                    height={96}
-                    quality={100}
-                    className="w-12 h-12 sm:w-16 sm:h-16 lg:w-20 lg:h-20 object-contain"
-                  />
-                  <span className="text-sm whitespace-nowrap sm:whitespace-normal sm:text-center text-foreground">Custom Grocery List</span>
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Generate your personalized grocery list</p>
-              </TooltipContent>
-            </Tooltip>
-          </nav>
-        </TooltipProvider>
-
-        {/* Food For Thought and Food Journal Cards */}
-        <div className="mt-3 sm:mt-4 flex flex-col sm:flex-row gap-2 sm:gap-3">
-          <Card 
-            className="p-2 sm:p-3 bg-card shadow-[0_4px_10px_rgba(0,0,0,0.2)] cursor-pointer hover:bg-accent w-full sm:w-1/2"
-            onClick={() => router.push('/food-for-thought')}
-            role="button"
-            aria-label="View Food For Thought"
-          >
-            <div className="flex items-center space-x-2 sm:space-x-3">
-              <div className="rounded-full bg-[#00FFFF]/20 p-2 sm:p-3">
-                <Image
-                  src="/food_forthought_icon.jpg"
-                  alt=""
-                  width={96}
-                  height={96}
-                  quality={100}
-                  className="w-12 h-12 sm:w-16 sm:h-16 object-contain"
-                />
-              </div>
-              <div>
-                <h2 className={`text-sm sm:text-base font-semibold text-foreground ${lexend.className}`}>Food For Thought</h2>
-                <p className="text-xs sm:text-sm text-muted-foreground">The courses to help you THRIVE</p>
-              </div>
-            </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <Card className="bg-card shadow-[0_8px_30px_rgba(0,255,255,0.2)]">
+            <CardHeader>
+              <CardTitle className={`text-xl font-bold text-center ${comfortaa.className}`}>
+                Food Journal
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="flex flex-col items-center">
+              <p className="text-gray-600 text-center mb-4">
+                Track your daily meals and get personalized insights
+              </p>
+              <Button 
+                onClick={() => handleNavigate('/food-journal')}
+                className="bg-[#008080] hover:bg-[#006666] text-white"
+              >
+                Open Food Journal
+              </Button>
+            </CardContent>
           </Card>
 
-          <Card 
-            className="p-2 sm:p-3 bg-card shadow-[0_4px_10px_rgba(0,0,0,0.2)] cursor-not-allowed opacity-70 w-full sm:w-1/2"
-            role="button"
-            aria-label="Food Journal - Coming Soon"
-          >
-            <div className="flex items-center space-x-2 sm:space-x-3">
-              <div className="rounded-full bg-[#00FFFF]/20 p-2 sm:p-3">
-                <Image
-                  src="/scanner_icon.png"
-                  alt=""
-                  width={96}
-                  height={96}
-                  quality={100}
-                  className="w-12 h-12 sm:w-16 sm:h-16 object-contain"
-                />
-              </div>
-              <div>
-                <h2 className={`text-sm sm:text-base font-semibold text-foreground ${lexend.className}`}>
-                  Food Journal
-                </h2>
-                <p className="text-xs sm:text-sm text-muted-foreground">Coming Soon</p>
-              </div>
-            </div>
+          <Card className="bg-card shadow-[0_8px_30px_rgba(0,255,255,0.2)]">
+            <CardHeader>
+              <CardTitle className={`text-xl font-bold text-center ${comfortaa.className}`}>
+                Grocery List
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="flex flex-col items-center">
+              <p className="text-gray-600 text-center mb-4">
+                Get personalized grocery recommendations
+              </p>
+              <Button 
+                onClick={() => handleNavigate('/grocery-list')}
+                className="bg-[#008080] hover:bg-[#006666] text-white"
+              >
+                View Grocery List
+              </Button>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-card shadow-[0_8px_30px_rgba(0,255,255,0.2)]">
+            <CardHeader>
+              <CardTitle className={`text-xl font-bold text-center ${comfortaa.className}`}>
+                Health Survey
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="flex flex-col items-center">
+              <p className="text-gray-600 text-center mb-4">
+                Update your health profile and preferences
+              </p>
+              <Button 
+                onClick={() => handleNavigate('/surveys-goals')}
+                className="bg-[#008080] hover:bg-[#006666] text-white"
+              >
+                Take Survey
+              </Button>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-card shadow-[0_8px_30px_rgba(0,255,255,0.2)]">
+            <CardHeader>
+              <CardTitle className={`text-xl font-bold text-center ${comfortaa.className}`}>
+                Profile Settings
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="flex flex-col items-center">
+              <p className="text-gray-600 text-center mb-4">
+                Manage your account settings and preferences
+              </p>
+              <Button 
+                onClick={() => handleNavigate('/profile')}
+                className="bg-[#008080] hover:bg-[#006666] text-white"
+              >
+                View Profile
+              </Button>
+            </CardContent>
           </Card>
         </div>
-      </Card>
+
+        <div className="mt-8 text-center">
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="sm">
+                  <Info className="h-4 w-4 mr-2" />
+                  Need Help?
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Click on any card to access its features</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        </div>
+      </div>
     </div>
   )
 }

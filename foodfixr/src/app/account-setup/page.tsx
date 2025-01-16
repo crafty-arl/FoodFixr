@@ -3,8 +3,8 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Cookies from 'js-cookie';
-import AccountSetup from '@/components/account-setup';
-import { database } from '../appwrite';
+import AccountSetup, { UserData } from '@/components/account-setup';
+import { databases } from '@/lib/appwrite-config';
 import Loading from '@/components/loading';
 
 export default function AccountSetupPage() {
@@ -21,10 +21,10 @@ export default function AccountSetupPage() {
     }
   }, [router]);
 
-  const handleSaveProfile = async (userData: any) => {
+  const handleSaveProfile = async (userData: UserData) => {
     try {
       setLoading(true);
-      const result = await database.createDocument(
+      await databases.createDocument(
         'foodfixrdb',
         'user_profile',
         `user_profile_${uniqueId?.slice(-4)}`,
@@ -42,14 +42,12 @@ export default function AccountSetupPage() {
           userID: uniqueId
         }
       );
-      router.push('/dashboard'); // Or wherever you want to redirect after setup
-    } catch (err: any) {
-      if (err?.code === 409) {
+      router.push('/dashboard');
+    } catch (error: unknown) {
+      if (error instanceof Error && 'code' in error && error.code === 409) {
         console.log('User profile already exists');
-        // Handle existing profile - maybe update instead of create
       } else {
-        console.error('Error creating user profile:', err);
-        // Handle other errors
+        console.error('Error creating user profile:', error);
       }
     } finally {
       setLoading(false);
