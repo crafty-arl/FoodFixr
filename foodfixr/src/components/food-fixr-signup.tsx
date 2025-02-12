@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+// Remove unused useEffect import
+import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -16,13 +17,14 @@ import { account } from '@/app/appwrite'
 const comfortaa = Comfortaa({ subsets: ['latin'] })
 const lexend = Lexend({ subsets: ['latin'] })
 
-type PasswordChecks = {
-  length: boolean
-  uppercase: boolean
-  lowercase: boolean
-  number: boolean
-  special: boolean
-}
+// Move type to separate file or remove if unused
+// type PasswordChecks = {
+//   length: boolean
+//   uppercase: boolean
+//   lowercase: boolean
+//   number: boolean
+//   special: boolean
+// }
 
 export function FoodFixrSignup() {
   const router = useRouter()
@@ -223,7 +225,7 @@ export function FoodFixrSignup() {
                 </li>
                 <li className="flex items-center gap-2">
                   {passwordChecks.special ? <CheckCircle2 className="h-4 w-4 text-green-500" /> : <XCircle className="h-4 w-4 text-red-500" />}
-                  At least one special character (!@#$%^&*(),.?":{}|&lt;&gt;)
+                  At least one special character (!@#$%^&amp;*(),.?&quot;:{}|&lt;&gt;)
                 </li>
               </ul>
             </div>

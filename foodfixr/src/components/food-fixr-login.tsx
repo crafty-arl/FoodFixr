@@ -22,6 +22,11 @@ interface FoodFixrLoginProps {
   loading?: boolean;
 }
 
+interface AppwriteError {
+  code: number;
+  message: string;
+}
+
 export function FoodFixrLogin({ 
   onSubmit,
   onForgotPassword,
@@ -75,11 +80,12 @@ export function FoodFixrLogin({
           console.log('✓ Login Log Stored Successfully')
           console.log('Document ID:', savedLogin.$id)
           console.log('Login Time:', savedLogin.last_logged_in)
-        } catch (dbError: any) {
+        } catch (dbError) {
+          const appwriteError = dbError as AppwriteError
           console.error('✕ Failed to Store Login Log')
-          console.error('Full Error:', dbError)
-          console.error('Error Message:', dbError?.message)
-          console.error('Error Code:', dbError?.code)
+          console.error('Full Error:', appwriteError)
+          console.error('Error Message:', appwriteError?.message)
+          console.error('Error Code:', appwriteError?.code)
           // Continue with login process despite log storage failure
         }
 
@@ -98,16 +104,18 @@ export function FoodFixrLogin({
         console.log('\n=== Step 4: Navigation ===')
         console.log('Redirecting to /dashboard')
         
-      } catch (err: any) {
+      } catch (err) {
         console.error('\n=== Login Error ===')
         console.error('Full Error Object:', err)
         let errorMessage = 'Invalid email or password. Please try again.'
         
-        if (err?.code === 401) {
+        const appwriteError = err as AppwriteError
+        
+        if (appwriteError?.code === 401) {
           errorMessage = 'Invalid email or password. Please try again.'
-        } else if (err?.code === 429) {
+        } else if (appwriteError?.code === 429) {
           errorMessage = 'Too many login attempts. Please try again later.'
-        } else if (err?.code === 503) {
+        } else if (appwriteError?.code === 503) {
           errorMessage = 'Service temporarily unavailable. Please try again later.'
         } else if (err instanceof Error) {
           errorMessage = err.message
@@ -142,7 +150,7 @@ export function FoodFixrLogin({
             Food Fixr
           </CardTitle>
           <p className={`text-sm text-[#666666] ${lexend.className}`} role="contentinfo">
-            Welcome back! Let's continue your healthy journey.
+            Welcome back! Let&apos;s continue your healthy journey.
           </p>
         </CardHeader>
         <CardContent>
@@ -214,7 +222,7 @@ export function FoodFixrLogin({
             Forgot password?
           </button>
           <p>
-            Don't have an account?{' '}
+            Don&apos;t have an account?{' '}
             <button
               onClick={onSignUp}
               className="text-[#008080] hover:underline focus:ring-2 focus:ring-[#00FFFF] focus:ring-offset-2"

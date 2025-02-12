@@ -8,14 +8,14 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import Image from 'next/image'
 import { Comfortaa, Lexend } from 'next/font/google'
 import { useTheme } from 'next-themes'
-import { User } from 'lucide-react'
+// Remove unused User import
 import { database } from '@/app/appwrite'
 import { Query } from 'appwrite'
 import Cookies from 'js-cookie'
 
 const comfortaa = Comfortaa({ subsets: ['latin'] })
 const lexend = Lexend({ subsets: ['latin'] })
-
+  
 interface FoodFixrDashboardProps {
   username: string;
 }
@@ -24,7 +24,8 @@ export function FoodFixrDashboard({ username }: FoodFixrDashboardProps) {
   const [currentTime, setCurrentTime] = useState(new Date())
   const [lastLoginTime, setLastLoginTime] = useState<string | null>(null)
   const router = useRouter()
-  const { theme } = useTheme()
+  // Remove unused theme value since it's not being used
+  const { } = useTheme()
   const [mounted, setMounted] = useState(false)
 
   useEffect(() => {

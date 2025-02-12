@@ -1,4 +1,4 @@
-'use client'
+"use client"
 
 import { useState } from 'react'
 import { Button } from "@/components/ui/button"
@@ -41,25 +41,25 @@ export type UserData = {
 }
 
 export const healthConditionsList = [
-  'Heart Disease', 
-  'Diabetes', 
-  'Obesity', 
-  'Cancer', 
-  'Gut Health', 
-  'Brain Health', 
-  'Immunity', 
-  'Pain & Inflammation', 
-  'Stress & Anxiety',
-  'Injury Prevention',
-  'New Injury Repair',
-  'Pre-op Prep',
-  'Post-op Repair',
-  'Athletic Peak Performance'
+  "Heart Disease", 
+  "Diabetes", 
+  "Obesity", 
+  "Cancer", 
+  "Gut Health", 
+  "Brain Health", 
+  "Immunity", 
+  "Pain & Inflammation", 
+  "Stress & Anxiety",
+  "Injury Prevention",
+  "New Injury Repair",
+  "Pre-op Prep",
+  "Post-op Repair",
+  "Athletic Peak Performance"
 ]
 
-export const foodAllergiesList = ['Milk Products', 'Eggs', 'Fish', 'Shellfish', 'Tree Nuts', 'Peanuts', 'Wheat', 'Soy', 'Sesame', 'Corn', 'Gluten']
+export const foodAllergiesList = ["Milk Products", "Eggs", "Fish", "Shellfish", "Tree Nuts", "Peanuts", "Wheat", "Soy", "Sesame", "Corn", "Gluten"]
 
-export const dietaryPreferencesList = ['Plant-forward eater', 'Dairy and egg vegetarian', 'Vegetarian', 'Pescatarian', 'Vegan', 'Keto', 'Paleo', 'Carnivore', 'Gundry', 'FODMap', 'Lactose intolerant', 'Gluten-free', 'Corn-free', 'Nut-free', 'Dairy-free', 'Caffeine-free', 'Sustainable and organic', 'Grass-fed, pasture-raised, no antibiotic or GMO animal products', 'Raw foods foodie']
+export const dietaryPreferencesList = ["Plant-forward eater", "Dairy and egg vegetarian", "Vegetarian", "Pescatarian", "Vegan", "Keto", "Paleo", "Carnivore", "Gundry", "FODMap", "Lactose intolerant", "Gluten-free", "Corn-free", "Nut-free", "Dairy-free", "Caffeine-free", "Sustainable and organic", "Grass-fed, pasture-raised, no antibiotic or GMO animal products", "Raw foods foodie"]
 
 type AccountSetupProps = {
   onSave: (userData: UserData) => Promise<void>;
@@ -74,14 +74,16 @@ type AccountSetupProps = {
   buttonHoverColor?: string;
 }
 
+type IconType = React.ComponentType<{ className?: string }>
+
 export default function AccountSetup({ 
   onSave,
   initialData = {
-    age: '',
-    gender: '',
-    weight: '',
-    height: '',
-    activityLevel: '',
+    age: "",
+    gender: "",
+    weight: "",
+    height: "",
+    activityLevel: "",
     healthConditions: [],
     foodAllergies: [],
     dietaryPreferences: [],
@@ -101,7 +103,7 @@ export default function AccountSetup({
   const [currentStep, setCurrentStep] = useState(0)
   const [userData, setUserData] = useState<UserData>(initialData)
 
-  const updateUserData = (field: keyof UserData, value: any) => {
+  const updateUserData = (field: keyof UserData, value: UserData[keyof UserData]) => {
     setUserData(prev => ({ ...prev, [field]: value }))
   }
 
@@ -116,31 +118,31 @@ export default function AccountSetup({
   const handleSave = async () => {
     try {
       await onSave(userData);
-      router.push('/');
+      router.push("/");
     } catch (error) {
-      console.error('Error saving profile:', error);
-      alert('Failed to complete account setup. Please try again.');
+      console.error("Error saving profile:", error);
+      alert("Failed to complete account setup. Please try again.");
     }
   }
 
-  const addItem = (field: 'healthConditions' | 'foodAllergies' | 'dietaryPreferences', value: string) => {
+  const addItem = (field: "healthConditions" | "foodAllergies" | "dietaryPreferences", value: string) => {
     if (value && !userData[field].includes(value)) {
       updateUserData(field, [...userData[field], value])
     }
   }
 
-  const removeItem = (field: 'healthConditions' | 'foodAllergies' | 'dietaryPreferences', item: string) => {
+  const removeItem = (field: "healthConditions" | "foodAllergies" | "dietaryPreferences", item: string) => {
     updateUserData(field, userData[field].filter(i => i !== item))
   }
 
-  const ActivityLevelCard = ({ level, icon: Icon, description }: { level: string, icon: any, description: string }) => (
+  const ActivityLevelCard = ({ level, icon: Icon, description }: { level: string, icon: IconType, description: string }) => (
     <Card 
       className={`cursor-pointer transition-all ${
         userData.activityLevel === level 
           ? `border-[${borderColor}] shadow-[0_0_15px_rgba(0,255,255,0.5)]` 
           : `border-gray-200 hover:border-[${borderColor}] hover:shadow-md`
       }`}
-      onClick={() => updateUserData('activityLevel', level)}
+      onClick={() => updateUserData("activityLevel", level)}
     >
       <CardContent className="flex flex-col items-center p-6 text-center">
         <Icon className={`w-12 h-12 mb-4 text-[${borderColor}]`} />
@@ -150,7 +152,7 @@ export default function AccountSetup({
     </Card>
   )
 
-  const CheckboxGroup = ({ items, field }: { items: string[], field: 'healthConditions' | 'foodAllergies' | 'dietaryPreferences' }) => (
+  const CheckboxGroup = ({ items, field }: { items: string[], field: "healthConditions" | "foodAllergies" | "dietaryPreferences" }) => (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
       {items.map((item) => (
         <div key={item} className="flex items-center space-x-2">
@@ -202,13 +204,13 @@ export default function AccountSetup({
                   id="age"
                   type="number"
                   value={userData.age}
-                  onChange={(e) => updateUserData('age', e.target.value)}
+                  onChange={(e) => updateUserData("age", e.target.value)}
                   className={`bg-white border-[${borderColor}]`}
                 />
               </div>
               <div>
                 <Label htmlFor="gender" className={`text-[${textColor}]`}>Gender</Label>
-                <Select onValueChange={(value) => updateUserData('gender', value)}>
+                <Select onValueChange={(value) => updateUserData("gender", value)}>
                   <SelectTrigger id="gender" className={`bg-white border-[${borderColor}]`}>
                     <SelectValue placeholder="Select gender" />
                   </SelectTrigger>
@@ -225,7 +227,7 @@ export default function AccountSetup({
                   id="weight"
                   type="number"
                   value={userData.weight}
-                  onChange={(e) => updateUserData('weight', e.target.value)}
+                  onChange={(e) => updateUserData("weight", e.target.value)}
                   className={`bg-white border-[${borderColor}]`}
                 />
               </div>
@@ -235,7 +237,7 @@ export default function AccountSetup({
                   id="height"
                   type="number"
                   value={userData.height}
-                  onChange={(e) => updateUserData('height', e.target.value)}
+                  onChange={(e) => updateUserData("height", e.target.value)}
                   className={`bg-white border-[${borderColor}]`}
                 />
               </div>
@@ -288,7 +290,7 @@ export default function AccountSetup({
                     {condition}
                     <button
                       className="ml-1 hover:text-destructive"
-                      onClick={() => removeItem('healthConditions', condition)}
+                      onClick={() => removeItem("healthConditions", condition)}
                     >
                       <X className="h-3 w-3" />
                     </button>
@@ -311,7 +313,7 @@ export default function AccountSetup({
                     {allergy}
                     <button
                       className="ml-1 hover:text-destructive"
-                      onClick={() => removeItem('foodAllergies', allergy)}
+                      onClick={() => removeItem("foodAllergies", allergy)}
                     >
                       <X className="h-3 w-3" />
                     </button>
@@ -323,10 +325,10 @@ export default function AccountSetup({
                   placeholder="Add custom allergy" 
                   className={`bg-white border-[${borderColor}]`}
                   onKeyPress={(e) => {
-                    if (e.key === 'Enter') {
+                    if (e.key === "Enter") {
                       const target = e.target as HTMLInputElement
-                      addItem('foodAllergies', target.value)
-                      target.value = ''
+                      addItem("foodAllergies", target.value)
+                      target.value = ""
                     }
                   }}
                 />
@@ -334,9 +336,9 @@ export default function AccountSetup({
                   type="button"
                   className={`bg-[${buttonBgColor}] text-[${textColor}] border-[${borderColor}] hover:bg-[${buttonHoverColor}] ${lexend.className}`}
                   onClick={() => {
-                    const input = document.querySelector('input[placeholder="Add custom allergy"]') as HTMLInputElement
-                    addItem('foodAllergies', input.value)
-                    input.value = ''
+                    const input = document.querySelector("input[placeholder=\"Add custom allergy\"]") as HTMLInputElement
+                    addItem("foodAllergies", input.value)
+                    input.value = ""
                   }}
                 >
                   Add
@@ -358,7 +360,7 @@ export default function AccountSetup({
                     {preference}
                     <button
                       className="ml-1 hover:text-destructive"
-                      onClick={() => removeItem('dietaryPreferences', preference)}
+                      onClick={() => removeItem("dietaryPreferences", preference)}
                     >
                       <X className="h-3 w-3" />
                     </button>
@@ -378,7 +380,7 @@ export default function AccountSetup({
                   max={10}
                   step={1}
                   value={[userData.anxietyLevel]}
-                  onValueChange={(value) => updateUserData('anxietyLevel', value[0])}
+                  onValueChange={(value) => updateUserData("anxietyLevel", value[0])}
                   className="mb-2"
                 />
                 <p className={`text-center text-sm ${lexend.className}`}>{userData.anxietyLevel}</p>
@@ -391,14 +393,14 @@ export default function AccountSetup({
                   max={10}
                   step={1}
                   value={[userData.painLevel]}
-                  onValueChange={(value) => updateUserData('painLevel', value[0])}
+                  onValueChange={(value) => updateUserData("painLevel", value[0])}
                   className="mb-2"
                 />
                 <p className={`text-center text-sm ${lexend.className}`}>{userData.painLevel}</p>
               </div>
               <div>
                 <Label className={`text-[${textColor}] mb-2 block`}>Stress Push Notifications</Label>
-                <p className={`text-sm ${lexend.className}`}>You will receive random push notifications asking for your current stress level and what you're doing at the moment to feel that way.</p>
+                <p className={`text-sm ${lexend.className}`}>You will receive random push notifications asking for your current stress level and what you&apos;re doing at the moment to feel that way.</p>
               </div>
             </div>
           )}

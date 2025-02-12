@@ -8,8 +8,8 @@ const comfortaa = Comfortaa({ subsets: ['latin'] });
 
 // Create a context for the celebration
 const CelebrationContext = createContext({
-  triggerCelebration: (message) => {},
-  celebrateSurveyCompletion: (isAllComplete) => {}
+  triggerCelebration: () => {}, // Removed unused message parameter
+  celebrateSurveyCompletion: () => {} // Removed unused isAllComplete parameter
 });
 
 // Export the hook to trigger celebration
@@ -91,15 +91,14 @@ export function CelebrationProvider({ children }) {
     return messages[randomIndex];
   };
 
-  const triggerCelebration = (message) => {
+  const triggerCelebration = () => { // Removed unused message parameter
+    const message = getRandomMessage(PROGRESS_MESSAGES);
     setCelebrationMessage(message);
     setShowConfetti(true);
   };
 
-  const celebrateSurveyCompletion = (isAllComplete) => {
-    const message = isAllComplete 
-      ? getRandomMessage(COMPLETION_MESSAGES)
-      : getRandomMessage(PROGRESS_MESSAGES);
+  const celebrateSurveyCompletion = () => { // Removed unused isAllComplete parameter
+    const message = getRandomMessage(COMPLETION_MESSAGES);
     setCelebrationMessage(message);
     setShowConfetti(true);
   };

@@ -1,9 +1,9 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { Button } from "@/components/ui/button"
 import { Input } from '@/components/ui/input'
-import { Plus, Info, Loader2 } from 'lucide-react'
+import { Plus, Info, Loader2, X } from 'lucide-react'
 import Image from 'next/image'
 import { Comfortaa } from 'next/font/google'
 import { toast } from "@/hooks/use-toast"
@@ -36,14 +36,6 @@ type GroceryItem = {
   category?: string
 }
 
-type Recommendation = {
-  name: string
-  category: string
-  benefits: string
-  fun_fact: string
-  usage: string[]
-}
-
 // Add type for ingredients
 type Ingredient = {
   name: string;
@@ -60,8 +52,8 @@ export function FoodJournalComponent() {
   const [loadingMessage, setLoadingMessage] = useState('')
   const [selectedCategory, setSelectedCategory] = useState<string>('all')
 
-  // Loading messages array
-  const loadingMessages = [
+  // Use useMemo for loadingMessages
+  const loadingMessages = useMemo(() => [
     "Hmm... thinking about those proteins 🤔",
     "Checking what's fresh in the veggie aisle 🥬",
     "Hunting for the best healthy fats 🥑",
@@ -72,7 +64,7 @@ export function FoodJournalComponent() {
     "Cooking up some recipe ideas 👨‍🍳",
     "Double-checking allergies 🔍",
     "Almost done with your personalized list! ✨"
-  ]
+  ], [])
 
   // Function to cycle through loading messages
   useEffect(() => {
@@ -81,11 +73,11 @@ export function FoodJournalComponent() {
       const interval = setInterval(() => {
         setLoadingMessage(loadingMessages[messageIndex])
         messageIndex = (messageIndex + 1) % loadingMessages.length
-      }, 2000) // Change message every 2 seconds
+      }, 2000)
 
       return () => clearInterval(interval)
     }
-  }, [isLoading])
+  }, [isLoading, loadingMessages])
 
   // Fetch and log grocery items
   const fetchGroceryItems = async () => {
@@ -145,7 +137,7 @@ ${doc.grocery_fun_facts?.[index]?.fun_fact ? `Fun Fact: ${doc.grocery_fun_facts[
           // Parse the fun facts string if it exists
           let funFactData = { category: '', fun_fact: '', benefits: '', usage: '' }
           if (funFacts[index]) {
-            const [name, category, fun_fact, benefits, usage] = funFacts[index].split('|')
+            const [, category, fun_fact, benefits, usage] = funFacts[index].split('|')
             funFactData = { category, fun_fact, benefits, usage }
           }
 
@@ -212,7 +204,7 @@ ${doc.grocery_fun_facts?.[index]?.fun_fact ? `Fun Fact: ${doc.grocery_fun_facts[
         }
 
         // Save to database
-        const savedDoc = await database.createDocument(
+        await database.createDocument(
           'foodfixrdb',
           'food_fixr_grocery_items',
           documentId,
@@ -253,10 +245,6 @@ ${doc.grocery_fun_facts?.[index]?.fun_fact ? `Fun Fact: ${doc.grocery_fun_facts[
         item === itemToToggle ? { ...item, completed: !item.completed } : item
       )
     )
-  }
-
-  const removeItem = (index: number) => {
-    setGroceryList(prev => prev.filter((_, i) => i !== index))
   }
 
   const handleGetRecommendations = async () => {
@@ -412,6 +400,10 @@ For each ingredient, provide:
     }
   }
 
+  const removeItem = (index: number) => {
+    setGroceryList(prev => prev.filter((_, i) => i !== index))
+  }
+
   return (
     <div className="min-h-screen bg-white w-full px-4 sm:px-6 lg:px-8 py-6" role="main">
       <div className="max-w-4xl mx-auto">
@@ -551,6 +543,14 @@ For each ingredient, provide:
                     </TooltipContent>
                   </Tooltip>
                 </TooltipProvider>
+                <Button 
+                  variant="ghost" 
+                  size="sm"
+                  onClick={() => removeItem(index)}
+                  className="text-red-500 hover:text-red-700 transition-colors"
+                >
+                  <X className="h-4 w-4" />
+                </Button>
               </div>
             ))}
         </div>

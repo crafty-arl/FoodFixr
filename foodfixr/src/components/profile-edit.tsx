@@ -11,15 +11,17 @@ import { Slider } from "@/components/ui/slider"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import Image from 'next/image'
-import { Comfortaa, Lexend } from 'next/font/google'
 import { Sofa, PersonStanding, Users, Dumbbell, Trophy, X } from 'lucide-react'
 import { database, account } from '@/app/appwrite'
 import { Query } from 'appwrite'
 import Cookies from 'js-cookie'
 import Loading from './loading'
 
-const comfortaa = Comfortaa({ subsets: ['latin'] })
-const lexend = Lexend({ subsets: ['latin'] })
+// Remove font imports and use CSS variables instead
+const fontClasses = {
+  comfortaa: 'font-comfortaa',
+  lexend: 'font-lexend'
+}
 
 type UserData = {
   age: string
@@ -33,6 +35,9 @@ type UserData = {
   anxietyLevel: number
   painLevel: number
 }
+
+// Add these type definitions at the top with your other types
+type ActivityIcon = typeof Sofa | typeof PersonStanding | typeof Users | typeof Dumbbell | typeof Trophy;
 
 export function ProfileEdit() {
   const [userData, setUserData] = useState<UserData>({
@@ -167,7 +172,7 @@ export function ProfileEdit() {
     fetchUserData()
   }, [])
 
-  const updateUserData = (field: keyof UserData, value: any) => {
+  const updateUserData = (field: keyof UserData, value: string | number | string[]) => {
     console.log(`Updating ${field} with value:`, value)
     setUserData(prev => ({ ...prev, [field]: value }))
   }
@@ -231,15 +236,22 @@ export function ProfileEdit() {
       console.log('Save successful')
       setIsEditing(false)
       setError(null)
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error saving profile:', error)
-      setError(error.message || 'Failed to save profile changes')
+      const errorMessage = error instanceof Error 
+        ? error.message 
+        : 'Failed to save profile changes'
+      setError(errorMessage)
     } finally {
       setLoading(false)
     }
   }
 
-  const ActivityLevelCard = ({ level, icon: Icon, description }: { level: string, icon: any, description: string }) => {
+  const ActivityLevelCard = ({ level, icon: Icon, description }: { 
+    level: string, 
+    icon: ActivityIcon, 
+    description: string 
+  }) => {
     console.log(`Rendering ActivityLevelCard for level: ${level}`)
     return (
     <Card 
@@ -254,8 +266,8 @@ export function ProfileEdit() {
     >
       <CardContent className="flex flex-col items-center p-2 sm:p-4 text-center h-full justify-center">
         <Icon className="w-6 h-6 sm:w-8 sm:h-8 mb-1 sm:mb-2 text-[#006666]" aria-hidden="true" />
-        <h3 className={`text-xs sm:text-sm font-semibold mb-1 text-gray-900 ${comfortaa.className}`}>{level}</h3>
-        <p className={`text-[10px] sm:text-xs text-gray-800 ${lexend.className}`}>{description}</p>
+        <h3 className={`text-xs sm:text-sm font-semibold mb-1 text-gray-900 ${fontClasses.comfortaa}`}>{level}</h3>
+        <p className={`text-[10px] sm:text-xs text-gray-800 ${fontClasses.lexend}`}>{description}</p>
       </CardContent>
     </Card>
   )}
@@ -278,7 +290,7 @@ export function ProfileEdit() {
             }}
             disabled={!isEditing}
           />
-          <Label htmlFor={item} className={`text-xs sm:text-sm text-gray-800 ${lexend.className}`}>{item}</Label>
+          <Label htmlFor={item} className={`text-xs sm:text-sm text-gray-800 ${fontClasses.lexend}`}>{item}</Label>
         </div>
       ))}
     </div>
@@ -303,7 +315,7 @@ export function ProfileEdit() {
   }
 
   return (
-    <div className={`min-h-screen bg-white p-2 sm:p-4 flex flex-col items-center justify-center ${comfortaa.className}`}>
+    <div className={`min-h-screen bg-white p-2 sm:p-4 flex flex-col items-center justify-center ${fontClasses.comfortaa}`}>
       <Card className="w-full max-w-[95%] sm:max-w-4xl bg-[#ffffff] shadow-[0_8px_30px_rgba(0,102,102,0.2)]">
         <CardHeader className="space-y-3 text-center p-4 sm:p-6">
           <div className="flex justify-center">
@@ -311,8 +323,9 @@ export function ProfileEdit() {
               <Image
                 src="/foodfixrlogo.png"
                 alt="Food Fixr Logo"
-                layout="fill"
-                objectFit="contain"
+                width={96}
+                height={96}
+                className="object-contain"
               />
             </div>
           </div>
@@ -438,7 +451,7 @@ export function ProfileEdit() {
                 />
                 <div className="flex flex-wrap gap-2 mt-4" aria-label="Selected health conditions">
                   {userData.healthConditions.map(condition => (
-                    <Badge key={condition} variant="secondary" className={`text-xs sm:text-sm text-gray-900 bg-gray-200 ${lexend.className}`}>
+                    <Badge key={condition} variant="secondary" className={`text-xs sm:text-sm text-gray-900 bg-gray-200 ${fontClasses.lexend}`}>
                       {condition}
                       {isEditing && (
                         <button
@@ -461,7 +474,7 @@ export function ProfileEdit() {
                 />
                 <div className="flex flex-wrap gap-2 mt-4" aria-label="Selected food allergies">
                   {userData.foodAllergies.map(allergy => (
-                    <Badge key={allergy} variant="secondary" className={`text-xs sm:text-sm text-gray-900 bg-gray-200 ${lexend.className}`}>
+                    <Badge key={allergy} variant="secondary" className={`text-xs sm:text-sm text-gray-900 bg-gray-200 ${fontClasses.lexend}`}>
                       {allergy}
                       {isEditing && (
                         <button
@@ -491,7 +504,7 @@ export function ProfileEdit() {
                     />
                     <Button 
                       type="button"
-                      className={`bg-white text-gray-900 border-[#006666] hover:bg-[#006666]/10 ${lexend.className}`}
+                      className={`bg-white text-gray-900 border-[#006666] hover:bg-[#006666]/10 ${fontClasses.lexend}`}
                       onClick={() => {
                         const input = document.querySelector('input[placeholder="Add custom allergy"]') as HTMLInputElement
                         addItem('foodAllergies', input.value)
@@ -519,7 +532,7 @@ export function ProfileEdit() {
                     aria-valuemax={10}
                     aria-valuenow={userData.anxietyLevel}
                   />
-                  <p className={`text-center text-xs sm:text-sm text-gray-900 ${lexend.className}`}>{userData.anxietyLevel}</p>
+                  <p className={`text-center text-xs sm:text-sm text-gray-900 ${fontClasses.lexend}`}>{userData.anxietyLevel}</p>
                 </div>
                 <div>
                   <Label htmlFor="pain-level" className="text-gray-900 mb-2 block">Pain Level (1-10)</Label>
@@ -536,7 +549,7 @@ export function ProfileEdit() {
                     aria-valuemax={10}
                     aria-valuenow={userData.painLevel}
                   />
-                  <p className={`text-center text-xs sm:text-sm text-gray-900 ${lexend.className}`}>{userData.painLevel}</p>
+                  <p className={`text-center text-xs sm:text-sm text-gray-900 ${fontClasses.lexend}`}>{userData.painLevel}</p>
                 </div>
               </div>
             </TabsContent>
@@ -549,7 +562,7 @@ export function ProfileEdit() {
                 />
                 <div className="flex flex-wrap gap-2 mt-4" aria-label="Selected dietary preferences">
                   {userData.dietaryPreferences.map(preference => (
-                    <Badge key={preference} variant="secondary" className={`text-xs sm:text-sm text-gray-900 bg-gray-200 ${lexend.className}`}>
+                    <Badge key={preference} variant="secondary" className={`text-xs sm:text-sm text-gray-900 bg-gray-200 ${fontClasses.lexend}`}>
                       {preference}
                       {isEditing && (
                         <button
@@ -572,13 +585,13 @@ export function ProfileEdit() {
             <>
               <Button 
                 onClick={() => setIsEditing(false)}
-                className={`bg-white text-gray-900 border-[#006666] hover:bg-[#006666]/10 ${lexend.className} text-xs sm:text-sm`}
+                className={`bg-white text-gray-900 border-[#006666] hover:bg-[#006666]/10 ${fontClasses.lexend} text-xs sm:text-sm`}
               >
                 Cancel
               </Button>
               <Button 
                 onClick={handleSave}
-                className={`bg-white text-gray-900 border-[#006666] hover:bg-[#006666]/10 ${lexend.className} text-xs sm:text-sm`}
+                className={`bg-white text-gray-900 border-[#006666] hover:bg-[#006666]/10 ${fontClasses.lexend} text-xs sm:text-sm`}
               >
                 Save Changes
               </Button>
@@ -586,7 +599,7 @@ export function ProfileEdit() {
           ) : (
             <Button 
               onClick={() => setIsEditing(true)}
-              className={`bg-white text-gray-900 border-[#006666] hover:bg-[#006666]/10 ${lexend.className} text-xs sm:text-sm`}
+              className={`bg-white text-gray-900 border-[#006666] hover:bg-[#006666]/10 ${fontClasses.lexend} text-xs sm:text-sm`}
             >
               Edit Profile
             </Button>
