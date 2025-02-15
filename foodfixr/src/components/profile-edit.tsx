@@ -39,19 +39,12 @@ type UserData = {
 // Add these type definitions at the top with your other types
 type ActivityIcon = typeof Sofa | typeof PersonStanding | typeof Users | typeof Dumbbell | typeof Trophy;
 
-export function ProfileEdit() {
-  const [userData, setUserData] = useState<UserData>({
-    age: '',
-    gender: '',
-    weight: '',
-    height: '',
-    activityLevel: '',
-    healthConditions: [],
-    foodAllergies: [],
-    dietaryPreferences: [],
-    anxietyLevel: 1,
-    painLevel: 1
-  })
+interface ProfileEditProps {
+  userData: UserData;
+  onSave: (updatedData: UserData | ((prev: UserData) => UserData)) => Promise<void>;
+}
+
+export const ProfileEdit: React.FC<ProfileEditProps> = ({ userData, onSave }) => {
   const [isEditing, setIsEditing] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -105,7 +98,7 @@ export function ProfileEdit() {
             painLevel: Number(userDoc.PainLevel) || 1
           }
           console.log('Formatted user data:', formattedData)
-          setUserData(formattedData)
+          onSave(formattedData)
         } else {
           console.log('No user profile found, attempting to create one...')
           // If no profile exists, create one
@@ -134,7 +127,7 @@ export function ProfileEdit() {
             console.log('Created initial profile:', createdDoc)
             
             // Set initial data in state
-            setUserData({
+            onSave({
               age: '',
               gender: '',
               weight: '',
@@ -170,11 +163,11 @@ export function ProfileEdit() {
     }
 
     fetchUserData()
-  }, [])
+  }, [onSave])
 
   const updateUserData = (field: keyof UserData, value: string | number | string[]) => {
     console.log(`Updating ${field} with value:`, value)
-    setUserData(prev => ({ ...prev, [field]: value }))
+    onSave((prev: UserData) => ({ ...prev, [field]: value }))
   }
 
   const addItem = (field: 'healthConditions' | 'foodAllergies' | 'dietaryPreferences', value: string) => {

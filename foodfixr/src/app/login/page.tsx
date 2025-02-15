@@ -23,7 +23,7 @@ export default function LoginPage() {
         if (session) {
           router.push('/')
         }
-      } catch (error) {
+      } catch {
         // User is not logged in, continue showing login page
         console.log('No active session')
       }
@@ -76,8 +76,8 @@ export default function LoginPage() {
           // Profile exists, redirect to dashboard
           router.push('/')
         }
-      } catch (error) {
-        console.error('Error checking user profile:', error)
+      } catch (dbError) {
+        console.error('Error checking user profile:', dbError)
         // If we can't check profile, assume it doesn't exist
         router.push('/account-setup')
       }
@@ -85,9 +85,9 @@ export default function LoginPage() {
       // Return the user ID in the expected format
       return { $id: user.$id }
       
-    } catch (error) {
-      console.error('Login failed:', error)
-      throw error // Let the login component handle the error display
+    } catch (loginError) {
+      console.error('Login failed:', loginError)
+      throw loginError // Let the login component handle the error display
     } finally {
       setLoading(false)
     }

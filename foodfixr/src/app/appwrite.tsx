@@ -1,5 +1,4 @@
 import { Client, Databases, Account } from 'appwrite';
-import { type Models } from 'appwrite';
 
 const client = new Client();
 

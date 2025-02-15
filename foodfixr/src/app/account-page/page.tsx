@@ -11,6 +11,7 @@ import Cookies from 'js-cookie';
 export default function AccountPage() {
   const [userData, setUserData] = useState<UserData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [username, setUsername] = useState<string>('');
 
   const fetchUserData = async () => {
     try {
@@ -48,21 +49,26 @@ export default function AccountPage() {
         };
         console.log('Formatted user data:', formattedData);
         setUserData(formattedData);
+        setUsername(userDoc.Username || '');
       } else {
         console.log('No documents found for user');
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error fetching user data:', error);
-      if (error.response) {
-        console.error('Error response:', error.response);
+      if (error instanceof Error) {
+        console.error('Error message:', error.message);
       }
     } finally {
       setLoading(false);
     }
   };
 
-  const handleSave = async (updatedData: UserData) => {
-    setUserData(updatedData);
+  // Updated type to match expected function signature
+  const handleSave = async (updatedData: UserData | ((prev: UserData) => UserData)) => {
+    const newData = typeof updatedData === 'function' 
+      ? updatedData(userData as UserData)
+      : updatedData;
+    setUserData(newData);
     await fetchUserData();
   };
 
@@ -71,7 +77,7 @@ export default function AccountPage() {
   }, []);
 
   return (
-    <FoodFixrMenuDrawerComponent>
+    <FoodFixrMenuDrawerComponent username={username}>
       <div className="p-4">
         {loading ? (
           <div>Loading...</div>

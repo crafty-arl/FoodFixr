@@ -4,8 +4,22 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Cookies from 'js-cookie';
 import AccountSetup from '@/components/account-setup';
-import { database } from '../appwrite';
+import { database } from '@/app/appwrite';
 import Loading from '@/components/loading';
+
+// Add this interface for the user profile data
+interface UserProfileData {
+  age: string;
+  gender: string;
+  weight: string;
+  height: string;
+  activityLevel: string;
+  healthConditions: string[];
+  foodAllergies: string[];
+  dietaryPreferences: string[];
+  anxietyLevel: number;
+  painLevel: number;
+}
 
 export default function AccountSetupPage() {
   const router = useRouter();
@@ -21,10 +35,10 @@ export default function AccountSetupPage() {
     }
   }, [router]);
 
-  const handleSaveProfile = async (userData: any) => {
+  const handleSaveProfile = async (userData: UserProfileData) => {
     try {
       setLoading(true);
-      const result = await database.createDocument(
+      await database.createDocument(
         'foodfixrdb',
         'user_profile',
         `user_profile_${uniqueId?.slice(-4)}`,
@@ -42,14 +56,12 @@ export default function AccountSetupPage() {
           userID: uniqueId
         }
       );
-      router.push('/dashboard'); // Or wherever you want to redirect after setup
-    } catch (err: any) {
-      if (err?.code === 409) {
+      router.push('/dashboard');
+    } catch (error: unknown) {
+      if ((error as { code?: number }).code === 409) {
         console.log('User profile already exists');
-        // Handle existing profile - maybe update instead of create
       } else {
-        console.error('Error creating user profile:', err);
-        // Handle other errors
+        console.error('Error creating user profile:', error);
       }
     } finally {
       setLoading(false);

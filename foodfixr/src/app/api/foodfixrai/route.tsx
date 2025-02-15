@@ -1,7 +1,5 @@
 import { NextResponse } from 'next/server';
-import crypto from 'crypto';
-import { database } from '@/app/appwrite';
-import { Query } from 'appwrite';
+
 
 export async function POST(request: Request) {
   try {

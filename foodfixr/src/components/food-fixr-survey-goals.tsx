@@ -17,8 +17,7 @@ import { database } from '@/app/appwrite'
 import { Query } from 'appwrite'
 import Cookies from 'js-cookie'
 import LoadingSpinner from '@/components/loading'
-import { useWindowSize } from 'react-use'
-import { useCelebration } from '@/components/celebrate'
+import { Models } from 'appwrite'
 
 const comfortaa = Comfortaa({ subsets: ['latin'] })
 const lexend = Lexend({ subsets: ['latin'] })
@@ -83,7 +82,7 @@ interface CategoryStats {
 }
 
 // Add new interfaces for questions
-interface Question {
+interface Question extends BaseDocument {
   $id: string;
   QuestionType: string;
   Why: string;
@@ -96,8 +95,7 @@ interface Question {
   user_specfic_question_id?: string;
 }
 
-interface Response {
-  $id: string;
+interface Response extends Models.Document {  // Change from BaseDocument to Models.Document
   userid: string;
   questionid: string;
   surveytaken: string;
@@ -118,12 +116,6 @@ interface GoalLog {
   completedGoals?: boolean[];  // Track completion status for each goal
 }
 
-// Add this interface near the top with other interfaces
-interface GoalStatus {
-  [key: string]: { [key: number]: boolean };  // categoryId -> { goalIndex -> isCompleted }
-}
-
-// Add type for goal response
 interface GoalResponse {
   goal: string;
   category: string;
@@ -133,11 +125,13 @@ interface GoalResponse {
 
 // Add type guard
 function isValidGoalResponse(goal: unknown): goal is GoalResponse {
-  return typeof goal === 'object' && goal !== null &&
-    typeof (goal as any).goal === 'string' &&
-    typeof (goal as any).category === 'string' &&
-    typeof (goal as any).benefit === 'string' &&
-    typeof (goal as any).tips === 'string';
+  const goalResponse = goal as Partial<GoalResponse>;
+  return typeof goalResponse === 'object' && 
+         goalResponse !== null &&
+         typeof goalResponse.goal === 'string' &&
+         typeof goalResponse.category === 'string' &&
+         typeof goalResponse.benefit === 'string' &&
+         typeof goalResponse.tips === 'string';
 }
 
 const INITIAL_CATEGORIES: SurveyCategory[] = [
@@ -262,7 +256,7 @@ const isSurveyCategory = (category: string | undefined): category is string => {
 };
 
 // Add polling function
-const pollForUpdatedGoals = async (uniqueId: string, category: string, maxAttempts = 5) => {
+export const pollForUpdatedGoals = async (uniqueId: string, category: string, maxAttempts = 5) => {
   let attempts = 0;
   
   const poll = async () => {
@@ -300,37 +294,10 @@ const pollForUpdatedGoals = async (uniqueId: string, category: string, maxAttemp
   return null;
 };
 
-// Add these message arrays at the top of the file
-const PROGRESS_MESSAGES = [
-  "Great progress! Keep going! 🌟",
-  "You're doing fantastic! 🎯",
-  "Excellent work! Keep it up! 💪",
-  "Amazing progress! You're crushing it! 🚀",
-  "Wonderful job! Keep the momentum going! ⭐",
-  "You're on fire! Keep going! 🔥",
-  "Fantastic effort! You're making great strides! 🌈🌈",
-  "Outstanding work! Keep pushing forward! 💫",
-  "You're doing incredible! Keep the pace! 🎨",
-  "Brilliant progress! You're almost there! 🌺"
-];
-
-const COMPLETION_MESSAGES = [
-  "Congratulations! You've completed all surveys! 🎉",
-  "Amazing achievement! You've finished everything! 🏆",
-  "Incredible job! You've conquered all surveys! 🌟",
-  "Outstanding work! You've mastered all categories! 🎯",
-  "Phenomenal effort! You've completed the full journey! 🚀",
-  "You're a star! All surveys completed! ⭐",
-  "Magnificent work! You've reached the summit! 🏔️",
-  "Brilliant achievement! You've done it all! 💫",
-  "Exceptional work! You've completed everything! 🎨",
-  "Spectacular finish! You've mastered it all! 🌈"
-];
-
-// Add this helper function to count completed goals from a goal log
-const countCompletedGoals = (goals: string[]) => {
-  return goals.filter(goalText => goalText.includes('Completed: true')).length;
-};
+// // Add helper function to count completed goals from a goal log
+// const countCompletedGoals = (goals: string[]) => {
+//   return goals.filter(goalText => goalText.includes('Completed: true')).length;
+// };
 
 // Modify calculateCategoryScore to include historical goals
 const calculateCategoryScore = (baseScore: number, currentCompletedCount: number, historicalCompletedCount: number): number => {
@@ -367,71 +334,122 @@ const calculateCategoryScore = (baseScore: number, currentCompletedCount: number
 // Modify the areAllSurveysComplete function to include more detailed logging
 const areAllSurveysComplete = (categories: SurveyCategory[]) => {
   console.log('\n🔍 CHECKING SURVEY COMPLETION STATUS');
-  console.log('----------------------------------------');
   
-  let allComplete = true;
-  const categoryDetails = categories.map(cat => {
+  const allComplete = categories.every(cat => {
     const isComplete = cat.answeredCount === cat.questionCount && cat.questionCount > 0;
-    if (!isComplete) allComplete = false;
-    
-    return {
-      category: cat.name,
+    console.log(`Category ${cat.name}:`, {
       answered: cat.answeredCount,
       total: cat.questionCount,
-      isComplete,
-      validCategory: cat.questionCount > 0,
-      completionPercentage: cat.questionCount > 0 ? (cat.answeredCount / cat.questionCount) * 100 : 0
-    };
+      isComplete
+    });
+    return isComplete;
   });
 
-  console.log('📊 Detailed Category Status:');
-  categoryDetails.forEach(cat => {
-    console.log(`
-    Category: ${cat.category}
-    ├── Answered Questions: ${cat.answered}
-    ├── Total Questions: ${cat.total}
-    ├── Has Questions: ${cat.validCategory ? 'Yes' : 'No'}
-    ├── Completion: ${cat.completionPercentage.toFixed(1)}%
-    └── Status: ${cat.isComplete ? '✅ Complete' : '❌ Incomplete'}
-    `);
-  });
-
-  const incompleteCategories = categoryDetails.filter(cat => !cat.isComplete);
-  if (incompleteCategories.length > 0) {
-    console.log('❌ Incomplete Categories:', incompleteCategories.map(cat => cat.category).join(', '));
-  }
-
-  console.log('----------------------------------------');
-  console.log(`Final Status: ${allComplete ? '✅ ALL COMPLETE' : '❌ NOT ALL COMPLETE'}`);
-  console.log('----------------------------------------\n');
-
+  console.log(`Final Status: ${allComplete ? '✅ ALL COMPLETE' : '❌ NOT ALL COMPLETE'}\n`);
   return allComplete;
 };
 
-// Modify generateGoalsForCategory to include more logging
+// Add these type definitions at the top of the file
+interface BaseDocument {
+  $id: string;
+  $createdAt: string;
+  $updatedAt: string;
+  $permissions: string[];
+  $collectionId: string;
+  $databaseId: string;
+}
+
+interface GoalDocumentData {
+  userid: string;
+  category: string;
+  goals: string[];
+  date_goals_generated: string;
+  isCompleted: boolean;
+}
+
+interface GoalDocument extends BaseDocument, GoalDocumentData {}
+
+// Add type guard
+function isGoalDocument(doc: unknown): doc is GoalDocument {
+  if (!doc || typeof doc !== 'object') {
+    return false;
+  }
+
+  const goalDoc = doc as Partial<GoalDocument>;
+  return typeof goalDoc.userid === 'string' && 
+         typeof goalDoc.category === 'string' && 
+         Array.isArray(goalDoc.goals) &&
+         typeof goalDoc.date_goals_generated === 'string' &&
+         typeof goalDoc.isCompleted === 'boolean';
+}
+
+interface UserProfile extends BaseDocument {
+  userID: string;
+  healthConcerns: string[];
+  foodAllergies: string[];
+  dietaryPreferences: string[];
+  anxietyLevel: number;
+  painLevel: number;
+  activityLevel: string;
+}
+
+// Update the AppwriteDatabase interface to match Appwrite's types
+interface AppwriteDatabase {
+  listDocuments: <T extends Models.Document>(
+    databaseId: string,
+    collectionId: string,
+    queries?: string[]
+  ) => Promise<Models.DocumentList<T>>;
+  createDocument: <T extends Models.Document>(
+    databaseId: string,
+    collectionId: string,
+    documentId: string,
+    data: Omit<T, keyof Models.Document>,
+    permissions?: string[]
+  ) => Promise<T>;
+  updateDocument: <T extends Models.Document>(
+    databaseId: string,
+    collectionId: string,
+    documentId: string,
+    data: Omit<T, keyof Models.Document>
+  ) => Promise<T>;
+  getDocument: <T extends Models.Document>(
+    databaseId: string,
+    collectionId: string,
+    documentId: string
+  ) => Promise<T>;
+}
+
+interface CategoryStats {
+  total: number;
+  answeredCount: number;
+  score: number;
+  percentage: number;
+  healthScore: HealthScore;
+}
+
+interface CategoryStatsMap {
+  [key: string]: CategoryStats;
+}
+
+// Now update the function signatures to use these types
 const generateGoalsForCategory = async (
   uniqueId: string,
   category: string,
-  categoryStats: any,
+  categoryStats: CategoryStatsMap,
   overallScore: HealthScore,
   responses: Response[],
-  database: any,
+  database: AppwriteDatabase,
   questions: Question[],
   setCategoryGoals: React.Dispatch<React.SetStateAction<{ [key: string]: GoalLog }>>,
   categoryGoals: { [key: string]: GoalLog },
-  setSelectedSurvey: React.Dispatch<React.SetStateAction<Survey | null>>
+  setSelectedSurvey?: React.Dispatch<React.SetStateAction<Survey | null>>
 ) => {
   try {
     // Check if all surveys are complete before generating goals
-    const allSurveysComplete = Object.entries(categoryStats).every(([cat, stats]: [string, any]) => {
-      const hasCompletedSurvey = stats.answeredCount === stats.total && stats.total > 0;
-      console.log(`Survey completion check for ${cat}:`, {
-        answeredCount: stats.answeredCount,
-        total: stats.total,
-        isComplete: hasCompletedSurvey
-      });
-      return hasCompletedSurvey;
-    });
+    const allSurveysComplete = Object.entries(categoryStats).every(([, stats]: [string, CategoryStatistics]) => 
+      stats.answeredCount === stats.total && stats.total > 0
+    );
 
     if (!allSurveysComplete) {
       console.log('❌ Cannot generate goals: Not all surveys are complete');
@@ -446,7 +464,7 @@ const generateGoalsForCategory = async (
     });
 
     // Get user profile data
-    const userProfileResult = await database.listDocuments(
+    const userProfileResult = await database.listDocuments<UserProfile>(
       'foodfixrdb',
       'user_profile',
       [Query.equal('userID', uniqueId)]
@@ -467,12 +485,12 @@ const generateGoalsForCategory = async (
       score: categoryStats[category].percentage,
       categoryScores: categoryStats,
       userProfile: {
-        healthConditions: userProfile.HealthConcerns || [],
-        foodAllergies: userProfile.FoodAllergy || [],
-        dietaryPreferences: userProfile.DietaryPreference || [],
-        anxietyLevel: userProfile.AnxietyLevel || 1,
-        painLevel: userProfile.PainLevel || 1,
-        activityLevel: userProfile.ActivityLevel || 'Sedentary',
+        healthConditions: userProfile.healthConcerns || [],
+        foodAllergies: userProfile.foodAllergies || [],
+        dietaryPreferences: userProfile.dietaryPreferences || [],
+        anxietyLevel: userProfile.anxietyLevel || 1,
+        painLevel: userProfile.painLevel || 1,
+        activityLevel: userProfile.activityLevel || 'Sedentary',
         overallHealth: {
           score: overallScore.score,
           label: overallScore.label,
@@ -535,7 +553,7 @@ const generateGoalsForCategory = async (
 
       const goalsArray = result.webhookResponse.output
         .filter(isValidGoalResponse)
-        .map(goal => {
+        .map((goal: GoalResponse) => {
           const parts = [
             `Goal: ${goal.goal}`,
             `Category: ${goal.category}`,
@@ -553,23 +571,23 @@ const generateGoalsForCategory = async (
 
       if (goalsArray.length > 0) {
         console.log(`💾 Storing ${goalsArray.length} goals for ${category}`);
-        const newGoalDoc = await database.createDocument(
+        const newGoalDoc = await database.createDocument<GoalDocument>(
           'foodfixrdb',
           'food_fixr_ai_logs',
           'unique()',
           {
-            userid: uniqueId,
+            userid: uniqueId as string,
             category: category,
             goals: goalsArray,
             date_goals_generated: new Date().toISOString(),
             isCompleted: false
-          }
+          } as GoalDocumentData
         );
         console.log('✅ Goals stored with document ID:', newGoalDoc.$id);
 
         // Update local state immediately with the new goals
         const newGoalLog: GoalLog = {
-          userid: uniqueId,
+          userid: uniqueId as string,
           category: category,
           goals: goalsArray,
           date_goals_generated: new Date().toISOString(),
@@ -614,15 +632,16 @@ const generateGoalsForCategory = async (
 // Modify generateGoalsForLowScoreCategories to check for scores below Good (5.0)
 const generateGoalsForLowScoreCategories = async (
   uniqueId: string,
-  categoryStats: any,
+  categoryStats: CategoryStatsMap,
   overallScore: HealthScore,
   responses: Response[],
-  database: any,
+  database: AppwriteDatabase,
   setIsGeneratingGoals: (value: boolean) => void,
   setShowLoadingDialog: (value: boolean) => void,
   questions: Question[],
   setCategoryGoals: React.Dispatch<React.SetStateAction<{ [key: string]: GoalLog }>>,
-  categoryGoals: { [key: string]: GoalLog }
+  categoryGoals: { [key: string]: GoalLog },
+  setSelectedSurvey?: React.Dispatch<React.SetStateAction<Survey | null>>
 ) => {
   try {
     console.log('\n🚀 Starting bulk goal generation');
@@ -631,7 +650,7 @@ const generateGoalsForLowScoreCategories = async (
 
     // Get all categories that need new goals (completed surveys with score below Good)
     const categoriesNeedingGoals = Object.entries(categoryStats)
-      .filter(([category, stats]: [string, any]) => {
+      .filter(([category, stats]: [string, CategoryStatistics]) => {
         if (!category) return false;
         const hasCompletedSurvey = stats.answeredCount === stats.total && stats.total > 0;
         const isBelowGood = stats.percentage < 5.0; // Score below Good threshold
@@ -648,7 +667,7 @@ const generateGoalsForLowScoreCategories = async (
 
     console.log('🎯 Categories needing goals (below Good):', categoriesNeedingGoals);
     console.log('📈 Category Stats:', Object.fromEntries(
-      Object.entries(categoryStats).map(([cat, stats]: [string, any]) => [
+      Object.entries(categoryStats).map(([cat, stats]: [string, CategoryStatistics]) => [
         cat,
         {
           score: stats.percentage,
@@ -662,7 +681,7 @@ const generateGoalsForLowScoreCategories = async (
     for (const category of categoriesNeedingGoals) {
       console.log(`\n📝 Processing category: ${category} (Score: ${categoryStats[category].percentage})`);
       await generateGoalsForCategory(
-        uniqueId,
+        uniqueId as string, // Type assertion since we've checked it exists
         category,
         categoryStats,
         overallScore,
@@ -671,7 +690,7 @@ const generateGoalsForLowScoreCategories = async (
         questions,
         setCategoryGoals,
         categoryGoals,
-        null
+        setSelectedSurvey
       );
       // Add a small delay between requests to prevent rate limiting
       await new Promise(resolve => setTimeout(resolve, 1000));
@@ -689,16 +708,104 @@ const generateGoalsForLowScoreCategories = async (
   }
 };
 
+// Add this function near the top of the component
+const triggerCelebration = (message: string) => {
+  // You can implement celebration logic here
+  console.log('Celebration:', message);
+};
+
+interface GoalsState {
+  [key: string]: GoalLog;
+}
+
+interface AllCompletedGoalsState {
+  [key: string]: GoalLog[];
+}
+
+interface CategoryStatistics {
+  answeredCount: number;
+  total: number;
+  percentage: number;
+  score: number;
+  healthScore: HealthScore;
+}
+
+interface CompletedGoalsMap {
+  [key: string]: number;
+}
+
+interface CategoryResponseMap {
+  [key: string]: Response[];
+}
+
+// Add back necessary interfaces
+interface UserProfile {
+  HealthConcerns: string[];
+  FoodAllergy: string[];
+  DietaryPreference: string[];
+  AnxietyLevel: number;
+  PainLevel: number;
+  ActivityLevel: string;
+}
+
+// Update the calculateCompletedGoalsByCategory function to handle BaseDocument
+const calculateCompletedGoalsByCategory = (documents: BaseDocument[]): CompletedGoalsMap => {
+  return documents.reduce<CompletedGoalsMap>((acc, doc) => {
+    // Use type guard to ensure document is a valid GoalDocument
+    if (!isGoalDocument(doc)) {
+      return acc;
+    }
+    
+    if (!acc[doc.category]) {
+      acc[doc.category] = 0;
+    }
+    
+    const completedGoalsCount = doc.goals.filter(goal => 
+      goal.includes('Completed: true')
+    ).length;
+    
+    acc[doc.category] += completedGoalsCount * 0.15;
+    return acc;
+  }, {} as CompletedGoalsMap);
+};
+
+// Add a helper function to calculate overall progress
+const calculateOverallProgress = (
+  categoryStats: CategoryStatsMap,
+  completedGoals: CompletedGoalsMap
+): { score: number; totalAnswered: number; progressPercentage: number } => {
+  let totalScore = 0;
+  let totalAnswered = 0;
+  let totalPossible = 0;
+
+  Object.entries(categoryStats).forEach(([category, stats]) => {
+    if (stats.answeredCount > 0) {
+      const baseScore = stats.percentage || 0;
+      const goalsBonus = completedGoals[category] || 0;
+      const finalScore = Math.min(8, baseScore + goalsBonus);
+      
+      totalScore += finalScore;
+      totalAnswered += stats.answeredCount;
+      totalPossible += stats.total * 8;
+    }
+  });
+
+  return {
+    score: totalScore,
+    totalAnswered,
+    progressPercentage: totalPossible > 0 ? (totalScore / totalPossible) * 100 : 0
+  };
+};
+
 export const SurveysAndGoalsComponent = function FoodFixrSurveyGoals() {
-  const { width, height } = useWindowSize();
-  const { triggerCelebration, celebrateSurveyCompletion } = useCelebration();
+  // Remove unused imports and state
   const [isLoading, setIsLoading] = useState(true);
   const [data, setData] = useState<SurveyData>({
     surveyCategories: INITIAL_CATEGORIES,
     categoryScores: {},
     answeredQuestions: new Set()
   });
-  const [categoryStats, setCategoryStats] = useState<{ [key: string]: CategoryStats }>({});
+  const [categoryStats, setCategoryStats] = useState<CategoryStatsMap>({});
   const [overallScore, setOverallScore] = useState<HealthScore>({ 
     score: 0, 
     label: 'Not Started', 
@@ -710,13 +817,21 @@ export const SurveysAndGoalsComponent = function FoodFixrSurveyGoals() {
   const uniqueId = Cookies.get('uniqueId');
   const [questions, setQuestions] = useState<Question[]>([]);
   const [responses, setResponses] = useState<Response[]>([]);
-  const [questionFilter, setQuestionFilter] = useState<'all' | 'completed' | 'incomplete'>('incomplete');
-  const [categoryGoals, setCategoryGoals] = useState<{ [key: string]: GoalLog }>({});
-  const [completedGoals, setCompletedGoals] = useState<GoalStatus>({});
+  const [categoryGoals, setCategoryGoals] = useState<GoalsState>({});
   const [isGeneratingGoals, setIsGeneratingGoals] = useState(false);
   const [showLoadingDialog, setShowLoadingDialog] = useState(false);
-  const [allCompletedGoals, setAllCompletedGoals] = useState<{ [key: string]: GoalLog[] }>({});
-  const [showCelebration, setShowCelebration] = useState(false);
+  const [allCompletedGoals, setAllCompletedGoals] = useState<AllCompletedGoalsState>({});
+
+  // Initialize database with proper typing
+  const [appwriteDb] = useState<AppwriteDatabase>(() => {
+    if (!database) {
+      throw new Error('Database not initialized');
+    }
+    return database as unknown as AppwriteDatabase;
+  });
+
+  // Use appwriteDb as the single source of database access
+  const dbInstance = appwriteDb;
 
   // Add function to handle category selection
   const handleCategorySelect = async (category: SurveyCategory) => {
@@ -725,7 +840,7 @@ export const SurveysAndGoalsComponent = function FoodFixrSurveyGoals() {
       console.log('Selected category:', category.name);
 
       // First, fetch all risk assessment questions for this category
-      const riskQuestionsResult = await database.listDocuments(
+      const riskQuestionsResult = await dbInstance.listDocuments(
         'foodfixrdb',
         'risk_assesment_questions',
         [
@@ -741,7 +856,7 @@ export const SurveysAndGoalsComponent = function FoodFixrSurveyGoals() {
       })));
 
       // Then fetch user's responses for this specific category
-      const responsesResult = await database.listDocuments(
+      const responsesResult = await dbInstance.listDocuments(
         'foodfixrdb',
         'user_surveryquestions_log',
         [
@@ -834,82 +949,12 @@ export const SurveysAndGoalsComponent = function FoodFixrSurveyGoals() {
     }
   };
 
-  // Add handleSubmitAnswer function at component level
-  const handleSubmitAnswer = async (questionId: string, answer: string, category: string, question: Question) => {
-    try {
-      let score = 0;
-      switch (answer) {
-        case 'Absolutely':
-          score = question.absolutely;
-          break;
-        case 'Moderate For Sure':
-          score = question.moderate_for_sure;
-          break;
-        case 'Sort Of':
-          score = question.sort_of;
-          break;
-        case 'Barely or Rarely':
-          score = question.barely_or_rarely;
-          break;
-        case 'Never Ever':
-          score = question.never_ever;
-          break;
-      }
-
-      // Create document with exact field names
-      const result = await database.createDocument(
-        'foodfixrdb',
-        'user_surveryquestions_log',
-        'unique()',
-        {
-          userid: uniqueId,
-          questionid: questionId,
-          surveytaken: new Date().toISOString(),
-          survey_pts: score,
-          selectedAnswer: answer,
-          category: category,
-          question: question.Question
-        }
-      );
-
-      console.log('Document created:', {
-        id: result.$id,
-        userid: result.userid,
-        questionid: result.questionid,
-        surveytaken: result.surveytaken,
-        survey_pts: result.survey_pts,
-        selectedAnswer: result.selectedAnswer,
-        category: result.category,
-        question: result.question
-      });
-
-      // Update local state with exact field names
-      const newResponse: Response = {
-        $id: result.$id,
-        userid: result.userid,
-        questionid: result.questionid,
-        surveytaken: result.surveytaken,
-        survey_pts: result.survey_pts,
-        selectedAnswer: result.selectedAnswer,
-        category: result.category,
-        question: result.question
-      };
-
-      setResponses(prev => [...prev, newResponse]);
-      setIsLoading(true);
-
-    } catch (error) {
-      console.error('Error submitting answer:', error);
-    }
-  };
-
   useEffect(() => {
     let isMounted = true;
-    let pollInterval: NodeJS.Timeout;
-
+    
     const pollQuestions = async () => {
       try {
-        const questionsResult = await database.listDocuments(
+        const questionsResult = await dbInstance.listDocuments(
           'foodfixrdb',
           'risk_assesment_questions',
           [Query.limit(1000)]
@@ -930,148 +975,99 @@ export const SurveysAndGoalsComponent = function FoodFixrSurveyGoals() {
       }
     };
 
-    // Start polling
-    pollInterval = setInterval(pollQuestions, POLLING_INTERVAL);
+    const pollInterval: NodeJS.Timeout = setInterval(pollQuestions, POLLING_INTERVAL);
 
     // Cleanup
     return () => {
       isMounted = false;
-      if (pollInterval) {
-        clearInterval(pollInterval);
-      }
+      clearInterval(pollInterval);
     };
-  }, [questions]); // Include questions in dependencies to compare with new data
+  }, [questions, dbInstance]);
 
   useEffect(() => {
     let isMounted = true;
 
     const initialize = async () => {
+      if (!uniqueId || !dbInstance) {
+        console.log('Missing required dependencies for initialization');
+        setIsLoading(false);
+        return;
+      }
+
       try {
         console.log('Starting initialization...');
-        
-        if (!uniqueId || typeof uniqueId !== 'string') {
-          console.log('No uniqueId found or invalid');
-          setIsLoading(false);
-          return;
-        }
 
-        // Fetch questions, responses, and goals
         const [questionsResult, responsesResult, goalsResult] = await Promise.all([
-          database.listDocuments('foodfixrdb', 'risk_assesment_questions', [Query.limit(1000)]),
-          database.listDocuments('foodfixrdb', 'user_surveryquestions_log', [
-            Query.equal('userid', uniqueId),
-            Query.limit(1000)
-          ]),
-          database.listDocuments('foodfixrdb', 'food_fixr_ai_logs', [
-            Query.equal('userid', uniqueId),
-            Query.limit(1000)
-          ])
+          dbInstance.listDocuments<Question>(
+            'foodfixrdb',
+            'risk_assesment_questions',
+            [Query.limit(1000)]
+          ),
+          dbInstance.listDocuments<Response>(
+            'foodfixrdb',
+            'user_surveryquestions_log',
+            [Query.equal('userid', uniqueId), Query.limit(1000)]
+          ),
+          dbInstance.listDocuments<GoalDocument>(
+            'foodfixrdb',
+            'food_fixr_ai_logs',
+            [Query.equal('userid', uniqueId), Query.limit(1000)]
+          )
         ]);
 
-        const fetchedQuestions = questionsResult.documents as unknown as Question[];
-        const fetchedResponses = responsesResult.documents as unknown as Response[];
-        const fetchedGoals = goalsResult.documents;
-        
-        // Create a map of all questions by their document ID
-        const questionsMap = new Map(fetchedQuestions.map(q => [q.$id, q]));
+        if (!isMounted) return;
 
-        // Filter valid responses
-        const validResponses = fetchedResponses.filter(response => 
-          questionsMap.has(response.questionid)
-        );
+        const fetchedQuestions = questionsResult.documents;
+        const validResponses = responsesResult.documents as unknown as Response[];
+        const completedGoals = calculateCompletedGoalsByCategory(goalsResult.documents);
 
-        // Group questions by category
-        const questionsByCategory = fetchedQuestions.reduce((acc, question) => {
-          const category = question.QuestionType;
-          if (!acc[category]) {
-            acc[category] = [];
-          }
-          acc[category].push(question);
-          return acc;
-        }, {} as { [key: string]: Question[] });
+        // Calculate category stats
+        const stats: CategoryStatsMap = {};
+        INITIAL_CATEGORIES.forEach(category => {
+          const categoryResponses = validResponses.filter(r => r.category === category.name);
+          const categoryQuestions = fetchedQuestions.filter(q => q.QuestionType === category.name);
+          
+          const responsesScore = categoryResponses.reduce((sum: number, r) => sum + (r.survey_pts || 0), 0);
+          const baseScore = categoryResponses.length > 0 ? 
+            responsesScore / categoryResponses.length : 0;
+          
+          const goalsBonus = completedGoals[category.name] || 0;
+          const finalScore = Math.min(8, baseScore + goalsBonus);
 
-        // Calculate completed goals bonus by category
-        const completedGoalsByCategory = fetchedGoals.reduce((acc, doc) => {
-          const category = doc.category;
-          if (!acc[category]) {
-            acc[category] = 0;
-          }
-          // Count completed goals in this document
-          const completedGoals = doc.goals.filter((goal: string) => 
-            goal.includes('Completed: true')
-          ).length;
-          acc[category] += completedGoals * 0.15; // Add 0.15 for each completed goal
-          return acc;
-        }, {} as { [key: string]: number });
-
-        // Calculate stats for each category
-        const stats: { [key: string]: CategoryStats } = {};
-        let overallTotalScore = 0;
-        let totalAnsweredQuestions = 0;
-
-        // Process each category
-        Object.entries(questionsByCategory).forEach(([category, categoryQuestions]) => {
-          const categoryResponses = validResponses.filter(r => r.category === category);
-          const categoryTotalScore = categoryResponses.reduce((sum, response) => 
-            sum + (response.survey_pts || 0)
-          , 0);
-
-          if (categoryResponses.length > 0) {
-            overallTotalScore += categoryTotalScore;
-            totalAnsweredQuestions += categoryResponses.length;
-          }
-
-          // Calculate base average score from survey responses
-          let averageScore = categoryResponses.length > 0 ? 
-            (categoryTotalScore / categoryResponses.length) : 0;
-
-          // Add completed goals bonus
-          const goalsBonus = completedGoalsByCategory[category] || 0;
-          averageScore = Math.min(8, averageScore + goalsBonus); // Cap at 8
-
-          stats[category] = {
-            total: categoryQuestions.length,
+          stats[category.name] = {
+            score: responsesScore,
             answeredCount: categoryResponses.length,
-            score: categoryTotalScore,
-            percentage: averageScore,
-            healthScore: getHealthScore(averageScore)
+            total: categoryQuestions.length,
+            percentage: finalScore,
+            healthScore: getHealthScore(finalScore)
           };
         });
 
-        // Calculate overall score including goals bonus
-        const overallAverageScore = totalAnsweredQuestions > 0 ? 
-          Math.min(8, (overallTotalScore / totalAnsweredQuestions) + 
-            (Object.values(completedGoalsByCategory).reduce((sum, bonus) => sum + bonus, 0) / 
-            Object.keys(completedGoalsByCategory).length || 0)) : 0;
+        // Calculate overall progress
+        const progress = calculateOverallProgress(stats, completedGoals);
+        const overallScore = progress.totalAnswered > 0 ? 
+          progress.score / progress.totalAnswered : 0;
 
-        // Update states
         if (isMounted) {
           setQuestions(fetchedQuestions);
           setResponses(validResponses);
-          setOverallScore(getHealthScore(overallAverageScore));
           setCategoryStats(stats);
-
-          // Update categories data
-          const updatedCategories = INITIAL_CATEGORIES.map(cat => {
-            const categoryStats = stats[cat.name];
-            return {
-              ...cat,
-              progress: categoryStats?.percentage || 0,
-              questionCount: categoryStats?.total || 0,
-              answeredCount: categoryStats?.answeredCount || 0,
-              hasNotification: (categoryStats?.total || 0) > (categoryStats?.answeredCount || 0)
-            };
-          });
-
+          setOverallScore(getHealthScore(overallScore));
           setData(prevData => ({
             ...prevData,
-            surveyCategories: updatedCategories
+            surveyCategories: prevData.surveyCategories.map(cat => ({
+              ...cat,
+              progress: stats[cat.name]?.percentage || 0,
+              questionCount: stats[cat.name]?.total || 0,
+              answeredCount: stats[cat.name]?.answeredCount || 0,
+              hasNotification: (stats[cat.name]?.total || 0) > (stats[cat.name]?.answeredCount || 0)
+            }))
           }));
+          setIsLoading(false);
         }
 
       } catch (error) {
-        console.error('Initialization error:', error);
-      } finally {
+        console.error('Error in initialization:', error);
         if (isMounted) {
           setIsLoading(false);
         }
@@ -1080,10 +1076,10 @@ export const SurveysAndGoalsComponent = function FoodFixrSurveyGoals() {
 
     initialize();
 
-    return () => { 
-      isMounted = false; 
+    return () => {
+      isMounted = false;
     };
-  }, [uniqueId]);
+  }, [uniqueId, dbInstance]);
 
   // Add polling effect after the main initialization effect
   useEffect(() => {
@@ -1091,7 +1087,7 @@ export const SurveysAndGoalsComponent = function FoodFixrSurveyGoals() {
       if (!uniqueId) return;
 
       try {
-        const result = await database.listDocuments(
+        const result = await dbInstance.listDocuments(
           'foodfixrdb',
           'risk_assesment_questions',
           [Query.limit(1000)]
@@ -1121,10 +1117,7 @@ export const SurveysAndGoalsComponent = function FoodFixrSurveyGoals() {
 
     // Cleanup
     return () => clearInterval(interval);
-  }, [uniqueId, questions, setQuestions, setIsLoading]);
-
-  // Fix the hasUnansweredSelections check
-  const hasUnansweredSelections = Object.entries(selectedAnswers).length > 0;
+  }, [uniqueId, questions, setQuestions, setIsLoading, dbInstance]);
 
   // Add goals fetching to the initialization useEffect
   useEffect(() => {
@@ -1138,7 +1131,7 @@ export const SurveysAndGoalsComponent = function FoodFixrSurveyGoals() {
           'foodfixrdb',
           'food_fixr_ai_logs',
           [
-            Query.equal('userid', uniqueId),
+            Query.equal('userid', uniqueId as string),
             Query.orderDesc('date_goals_generated'),
             Query.limit(1000)
           ]
@@ -1147,7 +1140,13 @@ export const SurveysAndGoalsComponent = function FoodFixrSurveyGoals() {
         if (!isMounted) return;
 
         // Group all goals by category
-        const allGoalsByCategory = goalsResult.documents.reduce((acc: { [key: string]: GoalLog[] }, doc: any) => {
+        // Fix for line 1513 - Replace any with proper interface
+        const allGoalsByCategory = goalsResult.documents.reduce<{ [key: string]: GoalLog[] }>((acc, doc) => {
+          // Check if doc is a valid GoalDocument using the type guard
+          if (!isGoalDocument(doc)) {
+            return acc;
+          }
+
           if (!acc[doc.category]) {
             acc[doc.category] = [];
           }
@@ -1160,18 +1159,19 @@ export const SurveysAndGoalsComponent = function FoodFixrSurveyGoals() {
             $id: doc.$id
           });
           return acc;
-        }, {});
+        }, {} as { [key: string]: GoalLog[] });
 
-        // For active goals, use only the most recent uncompleted set
-        const latestGoals = Object.entries(allGoalsByCategory).reduce((acc: { [key: string]: GoalLog }, [category, goals]) => {
-          const latestUncompleted = goals.find(g => !g.isCompleted);
-          if (latestUncompleted) {
-            acc[category] = latestUncompleted;
+        console.log('🎯 Processed goals by category:', allGoalsByCategory);
+        
+        // Transform the goals array into a single goal object per category
+        const latestGoalsByCategory = Object.entries(allGoalsByCategory).reduce((acc: GoalsState, [category, goals]) => {
+          if (goals.length > 0) {
+            acc[category] = goals[0]; // Take the most recent goal
           }
           return acc;
         }, {});
 
-        setCategoryGoals(latestGoals);
+        setCategoryGoals(latestGoalsByCategory);
         setAllCompletedGoals(allGoalsByCategory);
       } catch (error) {
         console.error('Error fetching goals:', error);
@@ -1180,161 +1180,60 @@ export const SurveysAndGoalsComponent = function FoodFixrSurveyGoals() {
 
     fetchGoals();
     return () => { isMounted = false; };
-  }, [uniqueId]);
+  }, [uniqueId, dbInstance]);
 
   // Update the handleGoalComplete function
-  const handleGoalComplete = async (categoryId: string, goalIndex: number, isCompleted: boolean, category: string) => {
+  const handleGoalComplete = async (
+    goalId: string,
+    goalIndex: number,
+    isCompleted: boolean,
+    category: string,
+    db: AppwriteDatabase
+  ) => {
     try {
-      console.log('Goal completion parameters:', {
-        categoryId,
-        goalIndex,
-        isCompleted,
-        category,
-        uniqueId,
-        hasCurrentGoals: !!categoryGoals[category],
-        categoryStats: categoryStats[category]
-      });
-
-      // Validate inputs
-      if (!uniqueId || !category || !categoryId) {
-        throw new Error('Missing required parameters');
-      }
-
-      const currentGoals = categoryGoals[category];
-      if (!currentGoals?.goals) {
-        throw new Error(`No goals found for category: ${category}`);
-      }
-
-      // Update current goals
-      const updatedGoals = currentGoals.goals.map((goalText, idx) => {
-        if (idx === goalIndex) {
-          const parts = goalText.split('\n').filter(part => !part.startsWith('Completed:'));
-          return [...parts, `Completed: ${isCompleted}`].join('\n');
-        }
-        return goalText;
-      });
-
-      // Count completed goals from current set
-      const currentCompletedCount = updatedGoals.filter(goalText => 
-        goalText.includes('Completed: true')
-      ).length;
-
-      // Get historical completed goals
-      const historicalGoals = allCompletedGoals[category]?.filter(g => g.$id !== categoryId) || [];
-      const historicalCompletedCount = historicalGoals.reduce((total, goalSet) => {
-        return total + countCompletedGoals(goalSet.goals);
-      }, 0);
-
-      const allGoalsCompleted = currentCompletedCount === updatedGoals.length;
-
-      // Calculate new score including historical goals
-      const baseScore = categoryStats[category]?.percentage ?? 0;
-      const newScore = calculateCategoryScore(baseScore, currentCompletedCount, historicalCompletedCount);
-
-      console.log('Score calculation for category:', category, {
-        baseScore,
-        currentCompletedCount,
-        historicalCompletedCount,
-        newScore,
-        allGoalsCompleted
-      });
-
-      // Update database
-      await database.updateDocument(
+      const goalDoc = await db.getDocument<GoalDocument>(
         'foodfixrdb',
         'food_fixr_ai_logs',
-        categoryId,
+        goalId
+      );
+
+      const updatedGoals = goalDoc.goals.map((goal, index) => {
+        if (index === goalIndex) {
+          const parts = goal.split('\n');
+          const updatedParts = parts.map(part => {
+            if (part.startsWith('Completed:')) {
+              return `Completed: ${isCompleted}`;
+            }
+            return part;
+          });
+          return updatedParts.join('\n');
+        }
+        return goal;
+      });
+
+      await db.updateDocument<GoalDocument>(
+        'foodfixrdb',
+        'food_fixr_ai_logs',
+        goalId,
         {
           goals: updatedGoals,
-          isCompleted: allGoalsCompleted
+          isCompleted: updatedGoals.every(goal => goal.includes('Completed: true'))
         }
       );
 
-      // Update states
+      // Update local state
       setCategoryGoals(prev => ({
         ...prev,
         [category]: {
           ...prev[category],
           goals: updatedGoals,
-          isCompleted: allGoalsCompleted,
-          $id: categoryId
+          isCompleted: updatedGoals.every(goal => goal.includes('Completed: true'))
         }
       }));
-
-      setCategoryStats(prev => ({
-        ...prev,
-        [category]: {
-          ...prev[category],
-          percentage: newScore,
-          healthScore: getHealthScore(newScore)
-        }
-      }));
-
-      // Update data state for this category only
-      setData(prev => ({
-        ...prev,
-        surveyCategories: prev.surveyCategories.map(cat => 
-          cat.name === category 
-            ? { ...cat, progress: newScore }
-            : cat
-        )
-      }));
-
-      // Recalculate overall score
-      const updatedStats = {
-        ...categoryStats,
-        [category]: {
-          ...categoryStats[category],
-          percentage: newScore
-        }
-      };
-
-      const totalScore = Object.values(updatedStats).reduce((sum, stat) => sum + stat.percentage, 0);
-      const categoryCount = Object.keys(updatedStats).length;
-      const newOverallScore = categoryCount > 0 ? totalScore / categoryCount : 0;
-
-      setOverallScore(getHealthScore(newOverallScore));
-
-      // Trigger celebration for this category only
-      if (isCompleted) {
-        triggerCelebration(`Great job! Your ${category} score is now ${newScore.toFixed(1)}/8 🎯`);
-      }
-
-      // Handle completion logic for this category only
-      if (allGoalsCompleted && newScore < 5.0) {
-        setShowLoadingDialog(true);
-        try {
-          await generateGoalsForCategory(
-            uniqueId,
-            category,
-            updatedStats,
-            getHealthScore(newOverallScore),
-            responses,
-            database,
-            questions,
-            setCategoryGoals,
-            categoryGoals,
-            setSelectedSurvey
-          );
-        } catch (error) {
-          console.error('Failed to generate new goals:', error);
-        } finally {
-          setShowLoadingDialog(false);
-        }
-      }
 
     } catch (error) {
-      console.error('Error in handleGoalComplete:', error);
-      throw error;
+      console.error('Error updating goal completion:', error);
     }
-  };
-
-  // Add a helper function to check if new goals should be generated
-  const shouldGenerateNewGoals = (category: string) => {
-    const categoryScore = categoryStats[category]?.percentage || 0;
-    const currentGoals = categoryGoals[category];
-    
-    return categoryScore < 5.0 && (!currentGoals || currentGoals.isCompleted);
   };
 
   // Add loading dialog component
@@ -1361,20 +1260,13 @@ export const SurveysAndGoalsComponent = function FoodFixrSurveyGoals() {
     return categoryQuestions.length === answeredQuestions.length;
   };
 
-  // Add function to get random message
-  const getRandomMessage = (messages: string[]) => {
-    const randomIndex = Math.floor(Math.random() * messages.length);
-    return messages[randomIndex];
-  };
-
   // Add this useEffect after the other useEffects in the component
   useEffect(() => {
     const loadExistingGoals = async () => {
       if (!uniqueId) return;
 
       try {
-        console.log('🔄 Loading existing goals for user:', uniqueId);
-        const goalsResult = await database.listDocuments(
+        const goalsResult = await dbInstance.listDocuments(
           'foodfixrdb',
           'food_fixr_ai_logs',
           [
@@ -1384,29 +1276,42 @@ export const SurveysAndGoalsComponent = function FoodFixrSurveyGoals() {
           ]
         );
 
-        console.log('📥 Fetched goals from database:', {
-          count: goalsResult.documents.length,
-          goals: goalsResult.documents
-        });
+        const completedGoals = calculateCompletedGoalsByCategory(goalsResult.documents);
+        const overallProgress = calculateOverallProgress(categoryStats, completedGoals);
 
-        // Group goals by category
-        const goalsByCategory = goalsResult.documents.reduce((acc: { [key: string]: GoalLog }, doc: any) => {
-          // Only take the most recent goals for each category
-          if (!acc[doc.category] || new Date(doc.date_goals_generated) > new Date(acc[doc.category].date_goals_generated)) {
-            acc[doc.category] = {
-              userid: doc.userid,
-              category: doc.category,
-              goals: doc.goals,
-              date_goals_generated: doc.date_goals_generated,
-              isCompleted: doc.isCompleted || false,
-              $id: doc.$id
-            };
+        // Update UI with overall progress
+        setOverallScore(getHealthScore(overallProgress.score / Math.max(1, overallProgress.totalAnswered)));
+
+        // Group all goals by category and update state
+        const allGoalsByCategory = goalsResult.documents.reduce<{ [key: string]: GoalLog[] }>((acc, doc) => {
+          // Check if doc is a valid GoalDocument using the type guard
+          if (!isGoalDocument(doc)) {
+            return acc;
           }
-          return acc;
-        }, {});
 
-        console.log('🎯 Processed goals by category:', goalsByCategory);
-        setCategoryGoals(goalsByCategory);
+          if (!acc[doc.category]) {
+            acc[doc.category] = [];
+          }
+          acc[doc.category].push({
+            userid: doc.userid,
+            category: doc.category,
+            goals: doc.goals,
+            date_goals_generated: doc.date_goals_generated,
+            isCompleted: doc.isCompleted || false,
+            $id: doc.$id
+          });
+          return acc;
+        }, {} as { [key: string]: GoalLog[] });
+
+        setCategoryGoals(
+          Object.entries(allGoalsByCategory).reduce((acc: GoalsState, [category, goals]) => {
+            if (goals.length > 0) {
+              acc[category] = goals[0];
+            }
+            return acc;
+          }, {})
+        );
+        setAllCompletedGoals(allGoalsByCategory);
 
       } catch (error) {
         console.error('Error loading existing goals:', error);
@@ -1414,11 +1319,9 @@ export const SurveysAndGoalsComponent = function FoodFixrSurveyGoals() {
     };
 
     loadExistingGoals();
-  }, [uniqueId, database]); // Add this useEffect to load goals when component mounts
+  }, [uniqueId, dbInstance, categoryStats]); // Added categoryStats to dependencies
 
   useEffect(() => {
-    let isMounted = true;
-
     const calculateScores = async () => {
       try {
         if (!uniqueId) return;
@@ -1428,38 +1331,34 @@ export const SurveysAndGoalsComponent = function FoodFixrSurveyGoals() {
           'foodfixrdb',
           'food_fixr_ai_logs',
           [
-            Query.equal('userid', uniqueId),
+            Query.equal('userid', uniqueId as string),
             Query.limit(1000)
           ]
         );
 
         // Calculate completed goals bonus by category
-        const completedGoalsByCategory = goalsResult.documents.reduce((acc, doc) => {
-          const category = doc.category;
+        const completedGoalsByCategory = goalsResult.documents.reduce<Record<string, number>>((acc, doc) => {
+          const category = doc.category as string;
           if (!acc[category]) {
             acc[category] = 0;
           }
           
-          // Count completed goals in this document
-          const completedGoalsCount = doc.goals.filter((goal) => 
+          const completedGoalsCount = (doc.goals as string[]).filter((goal: string) => 
             goal.includes('Completed: true')
           ).length;
           
-          // Add 0.15 points for each completed goal
           acc[category] += completedGoalsCount * 0.15;
-          
           return acc;
         }, {});
 
         // Update category stats with completed goals bonus
         const updatedStats = { ...categoryStats };
         let totalScore = 0;
-        let totalCategories = 0;
-
-        Object.entries(updatedStats).forEach(([category, stats]) => {
+        let categoryCount = 0;
+        Object.entries(updatedStats).forEach(([category, stats]: [string, CategoryStats]) => {
           const baseScore = stats.percentage || 0;
           const goalsBonus = completedGoalsByCategory[category] || 0;
-          const newScore = Math.min(8, baseScore + goalsBonus); // Cap at 8
+          const newScore = Math.min(8, baseScore + goalsBonus);
 
           updatedStats[category] = {
             ...stats,
@@ -1468,25 +1367,23 @@ export const SurveysAndGoalsComponent = function FoodFixrSurveyGoals() {
           };
 
           totalScore += newScore;
-          totalCategories++;
+          categoryCount++;
         });
 
         // Calculate new overall score
-        const newOverallScore = totalCategories > 0 ? totalScore / totalCategories : 0;
+        const newOverallScore = categoryCount > 0 ? totalScore / categoryCount : 0;
 
-        if (isMounted) {
-          setCategoryStats(updatedStats);
-          setOverallScore(getHealthScore(newOverallScore));
+        setCategoryStats(updatedStats);
+        setOverallScore(getHealthScore(newOverallScore));
 
-          // Update categories data with new scores
-          setData(prevData => ({
-            ...prevData,
-            surveyCategories: prevData.surveyCategories.map(cat => ({
-              ...cat,
-              progress: updatedStats[cat.name]?.percentage || 0
-            }))
-          }));
-        }
+        // Update categories data with new scores
+        setData(prevData => ({
+          ...prevData,
+          surveyCategories: prevData.surveyCategories.map(cat => ({
+            ...cat,
+            progress: updatedStats[cat.name]?.percentage || 0
+          }))
+        }));
 
       } catch (error) {
         console.error('Error calculating scores:', error);
@@ -1494,13 +1391,8 @@ export const SurveysAndGoalsComponent = function FoodFixrSurveyGoals() {
     };
 
     calculateScores();
+  }, [uniqueId, responses, categoryGoals, dbInstance, categoryStats]);
 
-    return () => {
-      isMounted = false;
-    };
-  }, [uniqueId, responses, categoryGoals]); // Add categoryGoals to dependencies to recalculate when goals change
-
-  // Add this useEffect near other useEffects in your component
   useEffect(() => {
     const calculateInitialScores = async () => {
       try {
@@ -1517,7 +1409,7 @@ export const SurveysAndGoalsComponent = function FoodFixrSurveyGoals() {
             'foodfixrdb',
             'user_surveryquestions_log',
             [
-              Query.equal('userid', uniqueId),
+              Query.equal('userid', uniqueId as string),
               Query.limit(1000)
             ]
           ),
@@ -1525,29 +1417,28 @@ export const SurveysAndGoalsComponent = function FoodFixrSurveyGoals() {
             'foodfixrdb',
             'food_fixr_ai_logs',
             [
-              Query.equal('userid', uniqueId),
+              Query.equal('userid', uniqueId as string),
               Query.limit(1000)
             ]
           )
         ]);
 
         // Group responses by category
-        const responsesByCategory = responsesResult.documents.reduce((acc, response) => {
-          if (!acc[response.category]) {
-            acc[response.category] = [];
+        const responsesByCategory = responsesResult.documents.reduce<CategoryResponseMap>((acc, response) => {
+          const typedResponse = response as unknown as Response;
+          if (!acc[typedResponse.category]) {
+            acc[typedResponse.category] = [];
           }
-          acc[response.category].push(response);
+          acc[typedResponse.category].push(typedResponse);
           return acc;
-        }, {} as { [key: string]: any[] });
+        }, {});
 
         // Count completed goals by category
-        const completedGoalsByCategory = goalsResult.documents.reduce((acc, doc) => {
+        const completedGoalsByCategory = goalsResult.documents.reduce<Record<string, number>>((acc, doc) => {
           const category = doc.category;
           if (!acc[category]) {
             acc[category] = 0;
           }
-          
-          // Count completed goals in this document
           const completedGoalsCount = (doc.goals || []).filter((goal: string) => 
             goal.includes('Completed: true')
           ).length;
@@ -1564,11 +1455,9 @@ export const SurveysAndGoalsComponent = function FoodFixrSurveyGoals() {
         let categoryCount = 0;
 
         Object.entries(responsesByCategory).forEach(([category, responses]) => {
-          // Calculate base score from survey responses
-          const totalPoints = responses.reduce((sum, response) => sum + (response.survey_pts || 0), 0);
+          const totalPoints = responses.reduce((sum: number, response: { survey_pts?: number }) => sum + (response.survey_pts || 0), 0);
           const baseScore = responses.length > 0 ? totalPoints / responses.length : 0;
           
-          // Add bonus from completed goals
           const completedGoalsCount = completedGoalsByCategory[category] || 0;
           const finalScore = calculateCategoryScore(baseScore, completedGoalsCount, 0);
 
@@ -1590,19 +1479,11 @@ export const SurveysAndGoalsComponent = function FoodFixrSurveyGoals() {
           categoryCount++;
         });
 
-        // Calculate overall score
         const overallAverage = categoryCount > 0 ? totalScore / categoryCount : 0;
 
-        console.log('Final calculations:', {
-          categoryScores: updatedStats,
-          overallScore: overallAverage
-        });
-
-        // Update states
         setCategoryStats(updatedStats);
         setOverallScore(getHealthScore(overallAverage));
 
-        // Update categories data with new scores
         setData(prevData => ({
           ...prevData,
           surveyCategories: prevData.surveyCategories.map(cat => ({
@@ -1619,7 +1500,7 @@ export const SurveysAndGoalsComponent = function FoodFixrSurveyGoals() {
     };
 
     calculateInitialScores();
-  }, [uniqueId, questions]); // Dependencies: uniqueId and questions
+  }, [uniqueId, questions, categoryStats, dbInstance]);
 
   // Add this new effect hook near your other useEffect hooks
   useEffect(() => {
@@ -1635,7 +1516,7 @@ export const SurveysAndGoalsComponent = function FoodFixrSurveyGoals() {
         setShowLoadingDialog(true);
         try {
           const success = await generateGoalsForCategory(
-            uniqueId,
+            uniqueId as string, // Type assertion since we've checked it exists
             category,
             categoryStats,
             overallScore,
@@ -1652,7 +1533,7 @@ export const SurveysAndGoalsComponent = function FoodFixrSurveyGoals() {
               'foodfixrdb',
               'food_fixr_ai_logs',
               [
-                Query.equal('userid', uniqueId),
+                Query.equal('userid', uniqueId as string),
                 Query.equal('category', category),
                 Query.orderDesc('date_goals_generated'),
                 Query.limit(1)
@@ -1684,7 +1565,7 @@ export const SurveysAndGoalsComponent = function FoodFixrSurveyGoals() {
     };
 
     generateInitialGoalsIfNeeded();
-  }, [selectedSurvey?.category, categoryGoals, categoryStats, uniqueId]);
+  }, [selectedSurvey?.category, categoryGoals, categoryStats, uniqueId, overallScore, responses, database, questions]); // Added questions
 
   if (isLoading) {
     return <LoadingSpinner />;
@@ -1791,7 +1672,7 @@ export const SurveysAndGoalsComponent = function FoodFixrSurveyGoals() {
               console.log('Current responses before refresh:', responses);
               
               // Fetch latest responses when dialog opens
-              const responsesResult = await database.listDocuments(
+              const responsesResult = await dbInstance.listDocuments(
                 'foodfixrdb',
                 'user_surveryquestions_log',
                 [
@@ -1992,7 +1873,7 @@ export const SurveysAndGoalsComponent = function FoodFixrSurveyGoals() {
                             // Update responses state with new valid responses
                             const validNewResponses = newResponses.filter(r => r !== null);
                             const updatedResponses = [...responses, ...validNewResponses];
-                            setResponses(updatedResponses);
+                            setResponses(updatedResponses as Response[]);
 
                             // Calculate new category stats
                             const categoryResponses = updatedResponses.filter(r => r.category === category);
@@ -2072,23 +1953,24 @@ export const SurveysAndGoalsComponent = function FoodFixrSurveyGoals() {
                               }))
                             });
 
-                            celebrateSurveyCompletion(isAllComplete);
+                            triggerCelebration(`Great job! Your ${category} score is now ${averageScore.toFixed(1)}/8 🎯`);
 
                             // After successful submission, check if all surveys are complete
                             if (isAllComplete) {
                               // Generate goals for all categories with low scores
                               setShowLoadingDialog(true); // Make sure dialog shows before starting
                               await generateGoalsForLowScoreCategories(
-                                uniqueId,
+                                uniqueId as string, // Type assertion since we've checked it exists
                                 updatedCategoryStats,
                                 getHealthScore(newOverallScore),
-                                updatedResponses,
+                                updatedResponses as Response[],
                                 database,
                                 setIsGeneratingGoals,
                                 setShowLoadingDialog,
                                 questions,
                                 setCategoryGoals,
-                                categoryGoals
+                                categoryGoals,
+                                setSelectedSurvey
                               );
                             }
 
@@ -2130,14 +2012,14 @@ export const SurveysAndGoalsComponent = function FoodFixrSurveyGoals() {
                         if (!category) return null;
                         
                         // Check if ALL surveys are complete
-                        const allSurveysComplete = Object.entries(categoryStats).every(([cat, stats]: [string, any]) => 
+                        const allSurveysComplete = Object.entries(categoryStats).every(([, stats]: [string, CategoryStatistics]) => 
                           stats.answeredCount === stats.total && stats.total > 0
                         );
 
                         // If not all surveys are complete, show which ones need to be completed
                         if (!allSurveysComplete) {
                           const incompleteSurveys = Object.entries(categoryStats)
-                            .filter(([cat, stats]: [string, any]) => 
+                            .filter(([, stats]: [string, CategoryStatistics]) => 
                               stats.answeredCount !== stats.total || stats.total === 0
                             )
                             .map(([cat]) => cat);
@@ -2228,7 +2110,6 @@ export const SurveysAndGoalsComponent = function FoodFixrSurveyGoals() {
                                   const isCompleted = goalText.includes('Completed: true');
                                   const parts = goalText.split('\n');
                                   const goalPart = parts.find(part => part.startsWith('Goal:'))?.replace('Goal:', '').trim() || '';
-                                  const categoryPart = parts.find(part => part.startsWith('Category:'))?.replace('Category:', '').trim() || '';
                                   const benefitPart = parts.find(part => part.startsWith('Benefit:'))?.replace('Benefit:', '').trim() || '';
                                   const tipsPart = parts.find(part => part.startsWith('Tips:'))?.replace('Tips:', '').trim() || '';
                                   
@@ -2241,10 +2122,15 @@ export const SurveysAndGoalsComponent = function FoodFixrSurveyGoals() {
                                             checked={isCompleted}
                                             onChange={async (e) => {
                                               const newStatus = e.target.checked;
-                                              // Use the current category from selectedSurvey instead of parsing from goal text
                                               const currentCategory = selectedSurvey?.category;
                                               if (currentCategory && currentGoals.$id) {
-                                                await handleGoalComplete(currentGoals.$id, index, newStatus, currentCategory);
+                                                await handleGoalComplete(
+                                                  currentGoals.$id,
+                                                  index,
+                                                  newStatus,
+                                                  currentCategory,
+                                                  dbInstance
+                                                );
                                               }
                                             }}
                                             className="h-4 w-4 rounded border-gray-300 text-[#006666] focus:ring-[#006666]"
